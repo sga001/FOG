@@ -13,7 +13,7 @@ class LMS
       o_neighbors = @network.getNeighbors(key)
       neighbors = o_neighbors
             
-      1...@h.each{
+      1...@hops.each{
         o_neighbors.each{|nid|
           neighbors += @network.getNeighbors(nid)
         }
@@ -47,7 +47,7 @@ class LMS
     o_neighbors = @network.getNeighbors(nid)
     neighbor_list = o_neighbors
             
-    1...@h.each{
+    1...@hops.each{
       o_neighbors.each{|id|
         neighbor_list += @network.getNeighbors(id)
       }
