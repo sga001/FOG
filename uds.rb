@@ -1,91 +1,118 @@
 require 'socket'
 require 'location.rb'
 require 'node.rb'
+
+class Node
+  def initialize(x,y)
+    @x, @y = x, y
+  end
+
+  def x
+    return @x
+  end
+
+  def y
+    return @y
+  end
+
+  def x=(value)
+    @x = value
+  end 
+
+  def y=(value)
+    @y = value
+  end
+
+  def to_s
+    return "[" + @x.to_s + "," + @y.to_s + "]"
+  end
+
+end
+
 class UDS
+  # UDS is a uniform disk simulator. it simulates the basic physical layer of a network. 
  
   def initialize(num_nodes, width, height, nbr_dist=1, distance_metric="euclidean")
-    @num_nodes, @width, @height, @nbr_dist, @distance_metric = num_nodes, width, height, nbr_dist, distance_metric
-    @id = 0
-    @nodes = {} #mapping of nids -> locations
-    @pids = {} #mapping of nids -> pids (in order to kill the process)
-    @host = "127.0.0.1"
-    @port = 12000
-    num = 1..num_nodes
-    num.each{|n|
-      loc = Location.new(rand(width), rand(height))
-      pid = fork do 
-        Signal.trap("QUIT") { puts "Node at location " + loc.to_s() + " removed\n"; exit }
-        node = Node.new(@host, @port+@id) 
-        node.start()
-      end  
-      @nodes[@id] = loc
-      @pids[@id] = pid
-      @id +=1
-      Process.detach(pid)
+    @width, @height, @nbr_dist, @distance_metric = width, height, nbr_dist, distance_metric
+    # nodes is a hash of id:node pairs so that we can use different kinds of
+    # ids if we ever want. for now the nodes are just given sequential ids.
+    @nodes = {}
+    (0...num_nodes).each{|n|
+      @nodes[n] = Node.new(rand(width), rand(height))
     }
-  end
+  end  
   
-  
-  def add(x=nil, y=nil)
-    if x==nil and y == nil
-      loc = Location.new(rand(@width), rand(@height))
+  def print_nodes
+    if @nodes.length > 0
+      puts @nodes
     else
-      loc = Location.new(x, y)
-    end 
-    @num_nodes += 1
-    pid= fork do
-      Signal.trap("QUIT") { puts "Node at location " + loc.to_s() + " removed\n"; exit }
-      node = Node.new(@host, @port + @num_nodes)
-      node.start()
+      puts 'no nodes'
     end
-    @nodes[@id] = loc
-    @pids[@id] = pid
-    @id += 1
-    Process.detach(pid)
-    return @id - 1 
+  end
+
+  def add(x=nil, y=nil)
+    if x==nil or y == nil
+      x, y = rand(width), rand(height)
+    end 
+    new_id = @nodes.size
+    @nodes[new_id] = Node.new(x, y)
+    new_id
   end
  
   def remove(nid)
-     if @pids.has_key?(nid)
-      Process.kill("QUIT", @pids[nid])
-      @pids.delete(nid)
-      @nodes.delete(nid)
-    end
-    @num_nodes-=1
+    @nodes.delete(nid)  
   end
   
   def remove_all()
-    @pids.each{|id, pid| Process.kill("QUIT", pid)}
-    @pids.clear()
     @nodes.clear()
   end
   
-  
-  def neighbors(nid1, nid2)
-    locA = @nodes[nid1]
-    locB = @nodes[nid2]
-    distance = locA.distance(locB)
-    if distance > @nbr_dist
-      return false
-    else
-      return true
-    end
+  def distance(a, b)
+    # compute the euclidean distance between nodes a and b. 
+    Math.sqrt((@nodes[a].x - @nodes[b].x)**2 + (@nodes[a].y - @nodes[b].y)**2)
   end
-  
+
+ def neighbors(nid1, nid2=nil)
+=begin
+    if nid1 and nid2 are both passed in, return true or false depending on
+    whether the two nodes are neighbours. if nid2=nil, return a list of all
+    neighbours of nid1. 
+=end
+
+    if nid2:
+      locA = @nodes[nid1]
+      locB = @nodes[nid2]
+      if distance(nid1, nid2) > @nbr_dist
+        return false
+      else
+        return true
+      end
+
+    else # get all neighbours
+      nbrs = []
+      @nodes.each do |nid, node|
+        if (nid1 != nid) and distance(nid1,nid) <= @nbr_dist
+          nbrs.push(nid)
+        end
+      end
+      nbrs
+    end  
+  end
+
   def move(nid, x, y)
-    @nodes[nid] = Location.new(x, y)
+    @nodes[nid].x = x
+    @nodes[nid].y = y
   end
   
   def move_rel(nid, delx, dely)
-    loc = @nodes[nid]
-    x = loc.getX() + delx
-    y = loc.getY() + dely
-    @nodes[nid] = Location.new(x, y)
+    @nodes[nid].x += delx
+    @nodes[nid].y += dely
   end
   
   def get_location(nid)
-    return @nodes[nid]
+    return [@nodes[nid].x, @nodes[nid].y]
   end
+
 end
 
 # Running some lame tests :P
@@ -93,24 +120,18 @@ uds = UDS.new(5, 100, 100, 15, "euclidean")
 n1 = uds.add(50, 50)
 n2 = uds.add(50, 40)
 n3 = uds.add(50, 25)
-sleep(5)
+uds.print_nodes
 puts uds.neighbors(n1, n2).to_s + "\n" # should print true
 puts uds.neighbors(n1, n3).to_s + "\n" # should print false
 puts uds.neighbors(n2, n3).to_s + "\n" # should print true
-sleep(5)
 puts uds.get_location(n1) # should print [50, 50]
-sleep(2)
 uds.move(n1, 45, 50)
 puts uds.get_location(n1) # should print [45, 50]
-sleep(2)
 uds.move_rel(n1, 5, 0)
 puts uds.get_location(n1) # should print [50, 50]
-sleep(10)
-uds.remove(n1) # should print Node at location [50, 50] removed
-sleep(2)
-uds.remove(n2) # should print Node at location [50, 40] removed
-sleep(2)
-uds.remove(n3) # should print Node at location [50, 25] removed
-sleep(2)
+uds.remove(n1) 
+uds.remove(n2) 
+uds.remove(n3) 
 uds.remove_all()
+uds.print_nodes # should print 'no nodes'
 exit
