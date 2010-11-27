@@ -51,8 +51,8 @@ class LMS
   end
   
   def distance(k1, k2)
-    w1 = k1 - (k2.modulo(2**@lambda_))
-    w2 = k2 - (k1.modulo(2**@lambda_))
+    w1 = (k1 - k2).modulo(2**@lambda_)
+    w2 = (k2 - k1).modulo(2**@lambda_)
     if w1 < w2
       return w1
     else
