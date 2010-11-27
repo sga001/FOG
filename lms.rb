@@ -1,21 +1,39 @@
 require 'digest/md5'
 require 'uds.rb'
+
+=begin
+assumes a network object will be passed in which supports the following API:
+    network.getNodes(): returns all nodes in the network
+    network.neighbors(id): returns all physical neighbours of node with the given id. 
+
+XXX todo:
+do we need @ids?
+max_buffer should probably be set on a per-node basis
+determine the number of replicas based on the adapt() method
+i think we can replace the neighbour determination in initialize with neighbors_update?
+
+need to write:
+  adapt()
+  digest()
+  addNode() (done... not tested)
+
+=end
+
 class LMS
-  def initialize(h, lambda, network, max_buffer, max_failures)
-    @hops, @lambda, @network, @max_buffer, @max_failures = h, lambda, network, max_buffer, max_failures
-    @nodes = @network.getNodes()
+  def initialize(h, lambda_, network, max_buffer, max_failures)
+    @hops, @lambda, @network, @max_buffer, @max_failures = h, lambda_, network, max_buffer, max_failures
+    @nodes = @network.nodes
     @ids= {} # nids -> hash ids
     @LMSnodes= {}  #nids -> lMSNodes
-    
     #per node
     @nodes.each{|key, value| 
       @ids[key] = hashId(key)
-      o_neighbors = @network.getNeighbors(key)
+      o_neighbors = @network.neighbors(key)
       neighbors = o_neighbors
             
-      1...@hops.each{
+      (1...@hops).each{
         o_neighbors.each{|nid|
-          neighbors += @network.getNeighbors(nid)
+          neighbors += @network.neighbors(nid)
         }
         neighbors = neighbors.uniq #removes duplicates
         o_neighbors = neighbors
@@ -24,6 +42,13 @@ class LMS
     }
   end
   
+  def addNode(x=nil, y=nil)
+    new_id = @network.add(x,y)
+    @ids[new_id] = hashID(new_id)
+    @LMSnodes[new_id] = LMSnode.new(@ids[new_id], @max_buffer, nil)
+    neighbors_update(@ids[new_id])
+  end
+
   def hashId(nid) #Ask Bobby for the correct way of doing it
    d = Digest::MD5.hexdigest(nid)  
    return d.hash
@@ -44,12 +69,12 @@ class LMS
   end
   
   def neighbors_update(nid)
-    o_neighbors = @network.getNeighbors(nid)
+    o_neighbors = @network.neighbors(nid)
     neighbor_list = o_neighbors
             
     1...@hops.each{
       o_neighbors.each{|id|
-        neighbor_list += @network.getNeighbors(id)
+        neighbor_list += @network.neighbors(id)
       }
       neighbor_list = neighbor_list.uniq #removes duplicates
       o_neighbors = neighbor_list
@@ -120,6 +145,7 @@ class LMS
       else
         #everything is good, lets add the item to the buffer
         node.add_to_buffer(probe.getKey(), item)
+        puts "Message was stored at node " + node.id
       end
     }
   end
@@ -227,6 +253,10 @@ class LMSNode
     @buffer = {} 
   end
   
+  def id
+    return @id
+  end
+
   def neighbors()
     return @neighbors
   end
