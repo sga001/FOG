@@ -22,7 +22,11 @@ uds.remove(n3)
 uds.remove_all()
 uds.print_nodes # should print 'no nodes'
 
-hops = 2
+# Play around with all of these numbers to see the difference... is crazy :p but it kinda makes sense
+uds = UDS.new(100, 300, 300, 50, "euclidean") #gotta initialize uds again since we just removed all the nodes :p
+
+
+hops = 5  # CHANGE THIS AND SEE THE DIFFERENCE :P
 lambda_ = 256
 network = uds
 max_buffer = 10
@@ -35,11 +39,23 @@ review_msg = "the chicken today is terrible"
 
 # the key of the put request is like the tag. 
 
-# XXX TODO need to pull out the LMS node IDs so we can choose IDs for the
+# XXX TODO need to pull out the LMS node IDs so we can choose IDs for the (EASY..... just call uds.nodes() :P)
 # 'initiator' argumentof put/get
 
-lms.put(nature_msg, 'nature', 10)
-lms.put(event_msg, 'event', 10)
-lms.put(review_msg, 'review', 10)
-lms.get('event')
+ids = uds.nodes
+first=  ids.keys[0]
+second = ids.keys[1]
 
+
+
+lms.put(first, nature_msg, 'nature', 10)
+lms.put(first, event_msg, 'event', 10)
+lms.put(second, review_msg, 'review', 10)  #notice that I'm inserting it with node 2nd
+
+puts " ---- GETS START HERE ----"
+puts lms.get(first, 'event')
+puts lms.get(second, 'event')
+puts lms.get(first, 'review')
+puts lms.get(second, 'review')
+puts lms.get(first, 'nature')
+puts lms.get(second, 'nature')

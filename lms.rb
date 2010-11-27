@@ -8,37 +8,33 @@ assumes a network object will be passed in which supports the following API:
 
 XXX todo:
 do we need @ids?
-max_buffer should probably be set on a per-node basis
+ -> Yes, here's why: 
+    Everything we do is mostly using NIDs (i.e. the ids returned from the physical network nodes)... except the distance
+    comparison of a given key to the hash of a given node.... that's why we need the @ids... to find the hash of a given node    
+
+
+max_buffer should probably be set on a per-node basis (hmmm how should we implement that?)
 determine the number of replicas based on the adapt() method
-i think we can replace the neighbour determination in initialize with neighbors_update?
+i think we can replace the neighbour determination in initialize with neighbors_update? - DONE
 
 need to write:
   adapt()
-  digest()
-  addNode() (done... not tested)
+  digest()  (uhmmm... is this the bloomfilters stuff? do we REALLY need it... cause it sounds somewhat painful)
+  addNode() (done... FIXED A SMALL BUG YOU HAD :) )
 
 =end
 
 class LMS
   def initialize(h, lambda_, network, max_buffer, max_failures)
-    @hops, @lambda, @network, @max_buffer, @max_failures = h, lambda_, network, max_buffer, max_failures
+    @hops, @lambda_, @network, @max_buffer, @max_failures = h, lambda_, network, max_buffer, max_failures
     @nodes = @network.nodes
     @ids= {} # nids -> hash ids
     @LMSnodes= {}  #nids -> lMSNodes
     #per node
     @nodes.each{|key, value| 
       @ids[key] = hashId(key)
-      o_neighbors = @network.neighbors(key)
-      neighbors = o_neighbors
-            
-      (1...@hops).each{
-        o_neighbors.each{|nid|
-          neighbors += @network.neighbors(nid)
-        }
-        neighbors = neighbors.uniq #removes duplicates
-        o_neighbors = neighbors
-      }
-      @LMSnodes[key] = LMSNode.new(@ids[key], max_buffer, neighbors)
+      @LMSnodes[key] = LMSNode.new(@ids[key], nil)
+      neighbors_update(key)
     }
   end
   
@@ -46,17 +42,17 @@ class LMS
     new_id = @network.add(x,y)
     @ids[new_id] = hashID(new_id)
     @LMSnodes[new_id] = LMSnode.new(@ids[new_id], @max_buffer, nil)
-    neighbors_update(@ids[new_id])
+    neighbors_update(new_id)
   end
 
   def hashId(nid) #Ask Bobby for the correct way of doing it
-   d = Digest::MD5.hexdigest(nid)  
+   d = Digest::MD5.hexdigest(nid.to_s)  
    return d.hash
   end
   
   def distance(k1, k2)
-    w1 = k1 - (k2.modulo(2**@lambda))
-    w2 = k2 - (k1.modulo(2**@lambda))
+    w1 = k1 - (k2.modulo(2**@lambda_))
+    w2 = k2 - (k1.modulo(2**@lambda_))
     if w1 < w2
       return w1
     else
@@ -71,8 +67,8 @@ class LMS
   def neighbors_update(nid)
     o_neighbors = @network.neighbors(nid)
     neighbor_list = o_neighbors
-            
-    1...@hops.each{
+    num = 1..@hops      
+    num.each{
       o_neighbors.each{|id|
         neighbor_list += @network.neighbors(id)
       }
@@ -84,10 +80,10 @@ class LMS
   end
   
   def local_minimum(nid, k)
-    neighbors_update(nid) #update neighbors lazily... 
+    #neighbors_update(nid) #update neighbors lazily... 
     neighbor = @LMSnodes[nid].neighbors
-    id_min = nil
-    min_dist = 2**@lambda #max distance possible
+    id_min = nid
+    min_dist = distance(@ids[nid], k)
     neighbor.each{|id|
       dist = distance(@ids[id], k)
       if dist < min_dist
@@ -103,10 +99,15 @@ class LMS
     probe.add_to_path(nid)
     
     if probe.getLength() > 0
-      neighbors_update(nid) #update neighbors lazily... might be computationally taxing
+      #neighbors_update(nid) #update neighbors lazily... might be computationally taxing
       neighbor = @LMSnodes[nid].neighbors
-      random = neighbor[rand(neighbor.length)]
-      return random_walk(random, probe)
+      if neighbor.length > 0
+        random = neighbor[rand(neighbor.length)]
+        return random_walk(random, probe)
+      else
+        probe.setLength(0)
+        return probe
+      end
     else
       return probe
     end
@@ -122,11 +123,14 @@ class LMS
     end
   end
   
-  def put(initiator, item, k, n) #right now this function doesn't return anything... should it?
-    1..n.each{
-      walk_length = rand(91) + 10
+  def put(initiator, item, k, n) #right now this fun tion doesn't return anything... should it?
+   #puts "initiator = " + initiator.to_s #debug statement :P
+    hk = hashId(k)
+    num = 1..n
+    num.each{
+      walk_length = rand(50) + 10
       path = []
-      probe = PUTProbe.new(item, initiator, k, walk_length, path, @max_failures)
+      probe = PUTProbe.new(item, initiator, hk, walk_length, path, @max_failures)
       probe = random_walk(initiator, probe)
       last_node = probe.pop_last()
       found_minimum = deterministic_walk(last_node, probe)
@@ -136,7 +140,7 @@ class LMS
         probe.setLength(walk_length * 2)
         #duplication avoidance
         nid = probe.pop_last()
-        probe = duplication_avoidance(nid, probe)
+        probe = duplication_avoidance(nid, probe, k)
      
         if probe.getFailures() < 0
           next #don't even bother with this probe anymore....
@@ -145,17 +149,17 @@ class LMS
       else
         #everything is good, lets add the item to the buffer
         node.add_to_buffer(probe.getKey(), item)
-        puts "Message was stored at node " + node.id
+        puts "Message " + k + " was stored at node " + found_minimum.to_s + " without failures"
       end
     }
   end
   
-  def duplication_avoidance(nid, probe)
+  def duplication_avoidance(nid, probe, k)
       walk_length = probe.getLength()
       
       while probe.getFailures() >= 0 do
         probe.setLength(walk_length)
-        probe = random.walk(nid, probe)
+        probe = random_walk(nid, probe)
         last_node = probe.pop_last()
         found_minimum = deterministic_walk(last_node, probe)
         node = @LMSnodes[found_minimum]
@@ -166,14 +170,19 @@ class LMS
           next
         else
           node.add_to_buffer(probe.getKey(), probe.getItem())
+          puts "Message " + k + " was stored at node " + found_minimum.to_s + " with " + (@max_failures - probe.getFailures()).to_s + " failures"
           break
         end
+      end
+      if probe.getFailures() <= 0
+        puts "Message " + k + " was NOT store because of too many failures"
       end
       return probe
   end
   
   def get(initiator, k)
-      walk_length = rand(91) + 10
+      k = hashId(k)
+      walk_length = rand(50) + 10
       path = []
       probe = Probe.new(initiator, k, walk_length, path)
       probe = random_walk(initiator, probe)
@@ -199,7 +208,7 @@ class Probe
     @walk_length -=1
   end
   
-  def setLenght(length)
+  def setLength(length)
     @walk_length = length
   end
   

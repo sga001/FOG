@@ -1,7 +1,3 @@
-require 'socket'
-require 'location.rb'
-require 'node.rb'
-
 class Node
   def initialize(x,y)
     @x, @y = x, y
@@ -99,7 +95,7 @@ class UDS
           nbrs.push(nid)
         end
       end
-      nbrs
+      return nbrs
     end  
   end
 
