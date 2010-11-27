@@ -1,4 +1,4 @@
-require 'digest/md5'
+require 'digest/sha1'
 require 'uds.rb'
 
 =begin
@@ -45,9 +45,9 @@ class LMS
     neighbors_update(new_id)
   end
 
-  def hashId(nid) #Ask Bobby for the correct way of doing it
-   d = Digest::MD5.hexdigest(nid.to_s)  
-   return d.hash
+  def hashId(nid)
+   d = Digest::SHA1.hexdigest(nid.to_s).hex
+   return d.modulo(2**@lambda_)
   end
   
   def distance(k1, k2)
