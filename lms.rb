@@ -27,6 +27,8 @@ need to write:
 
 =end
 
+$dup_calls = 0
+
 class LMS
   def initialize(h, lambda_, network, max_failures)
     @hops, @lambda_, @network, @max_failures = h, lambda_, network, max_failures
@@ -115,7 +117,6 @@ class LMS
   def random_walk(nid, probe)
     probe.walk()
     probe.add_to_path(nid)
-    
     if probe.getLength() > 0
       #neighbors_update(nid) #update neighbors lazily... might be computationally taxing
       neighbor = @LMSnodes[nid].neighbors
@@ -141,66 +142,48 @@ class LMS
     end
   end
   
-  def put(initiator, item, k, n) #right now this fun tion doesn't return anything... should it?
-   #puts "initiator = " + initiator.to_s #debug statement :P
-    hk = hashId(k)
-    num = 1..n
-    num.each{
+  def put(initiator, item, data_key, replicas)
+    hash = hashId(data_key)
+    (1..replicas).each {|r| 
+      puts "placing replica #{r}"
       walk_length = rand(50) + 10
+      puts "initial walk_length: #{walk_length}"
       path = []
-      probe = PUTProbe.new(item, initiator, hk, walk_length, path, @max_failures)
-      probe = random_walk(initiator, probe)
-      last_node = probe.pop_last()
-      found_minimum = deterministic_walk(last_node, probe)
-      node = @LMSnodes[found_minimum]
-      if node.bufferFull || node.contains?(probe.getKey())
-        probe.fail()
-        probe.setLength(walk_length * 2)
-        #duplication avoidance
-        nid = probe.pop_last()
-        probe = duplication_avoidance(nid, probe, k)
-     
-        if probe.getFailures() < 0
-          next #don't even bother with this probe anymore....
-        end 
-        
-      else
-        #everything is good, lets add the item to the buffer
-        node.add_to_buffer(probe.getKey(), item)
-        puts "Message " + k + " was stored at node " + found_minimum.to_s + " without failures"
-      end
-    }
-  end
-  
-  def duplication_avoidance(nid, probe, k)
-      walk_length = probe.getLength()
-      
-      while probe.getFailures() >= 0 do
-        probe.setLength(walk_length)
-        probe = random_walk(nid, probe)
+      probe = PUTProbe.new(item, initiator, hash, walk_length, path, @max_failures)
+      success = false
+      give_up = false
+      while not success and not give_up
+        puts "trying to store message..."
+        probe = random_walk(initiator, probe)
         last_node = probe.pop_last()
         found_minimum = deterministic_walk(last_node, probe)
         node = @LMSnodes[found_minimum]
-        if node.bufferFull|| node.contains?(probe.getKey())
-          walk_length *= 2
+      
+        if node.bufferFull || node.contains?(probe.getKey())
           probe.fail()
-          nid = probe.pop_last()
-          next
+          if probe.getFailures >= @max_failures
+            give_up = true
+            puts "giving up on this replica, too many failures..."
+          else
+            probe.setLength(walk_length * 2)
+            probe.clearPath()
+          end
         else
-          node.add_to_buffer(probe.getKey(), probe.getItem())
-          puts "Message " + k + " was stored at node " + found_minimum.to_s + " with " + (@max_failures - probe.getFailures()).to_s + " failures"
-          break
+          success = true
+          #everything is good, lets add the item to the buffer
+          node.add_to_buffer(probe.getKey(), item)
+          puts "Replica #{r} from #{initiator} with key '#{data_key}' was stored at 
+                node #{found_minimum.to_s} with #{probe.getFailures} failures"
+          puts "Storage Path:"
+          pp(probe.getPath())
         end
       end
-      if probe.getFailures() <= 0
-        puts "Message " + k + " was NOT store because of too many failures"
-      end
-      return probe
+    }
   end
-  
+
   def get(initiator, k)
       k = hashId(k)
-      walk_length = rand(50) + 10
+      walk_length = rand(10) + 5
       path = []
       probe = Probe.new(initiator, k, walk_length, path)
       probe = random_walk(initiator, probe)
@@ -208,12 +191,13 @@ class LMS
       found_minimum = deterministic_walk(last_node, probe)
       node = @LMSnodes[found_minimum]
    
-      if node.contains?(probe.getKey())
-        return node.get(probe.getKey())
-      else
+      return node, probe
+#      if node.contains?(probe.getKey())
+#        return node.get(probe.getKey())
+#      else
        #failsauce...
-       return nil
-      end
+#       return nil
+#      end
   end
 end
 
@@ -249,7 +233,11 @@ class Probe
   def add_to_path(nid)
     @path.push(nid)
   end
-  
+
+  def clearPath
+    @path.clear()
+  end  
+
   def pop_last()
     return @path.pop
   end
@@ -258,7 +246,7 @@ end
 class PUTProbe < Probe
   def initialize(item, initiator, key, walk_length, path, failure_count)
     super(initiator, key, walk_length, path)
-    @item, @failure_count = item, failure_count
+    @item, @failure_count = item, 0
   end
   
   def getItem()
@@ -270,7 +258,7 @@ class PUTProbe < Probe
   end
   
   def fail()
-    @failure_count -= 1
+    @failure_count += 1
   end
 end
 
@@ -281,6 +269,7 @@ class LMSNode
         @max_buffer = buffer_size
     else
         @max_buffer = rand(20)
+    end
     @buffer = {} 
   end
   
@@ -310,6 +299,8 @@ class LMSNode
       return true
     else
       return false
+    end
+  end
 
   def bufferLength()
     return @buffer.length
