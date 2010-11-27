@@ -10,7 +10,7 @@ class Node
       rescue => reason
         puts "Can't create server: " + reason
         exit
-      end
+      enda
       
       begin
         while true
