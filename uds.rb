@@ -42,6 +42,10 @@ class UDS
     }
   end  
   
+  def nodes
+    return @nodes
+  end
+
   def print_nodes
     if @nodes.length > 0
       puts @nodes
@@ -115,23 +119,4 @@ class UDS
 
 end
 
-# Running some lame tests :P
-uds = UDS.new(5, 100, 100, 15, "euclidean")
-n1 = uds.add(50, 50)
-n2 = uds.add(50, 40)
-n3 = uds.add(50, 25)
-uds.print_nodes
-puts uds.neighbors(n1, n2).to_s + "\n" # should print true
-puts uds.neighbors(n1, n3).to_s + "\n" # should print false
-puts uds.neighbors(n2, n3).to_s + "\n" # should print true
-puts uds.get_location(n1) # should print [50, 50]
-uds.move(n1, 45, 50)
-puts uds.get_location(n1) # should print [45, 50]
-uds.move_rel(n1, 5, 0)
-puts uds.get_location(n1) # should print [50, 50]
-uds.remove(n1) 
-uds.remove(n2) 
-uds.remove(n3) 
-uds.remove_all()
-uds.print_nodes # should print 'no nodes'
-exit
+
