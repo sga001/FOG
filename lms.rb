@@ -1,6 +1,6 @@
 require 'digest/sha1'
 require 'uds.rb'
-
+require 'pp'
 =begin
 assumes a network object will be passed in which supports the following API:
     network.getNodes(): returns all nodes in the network
@@ -9,6 +9,7 @@ assumes a network object will be passed in which supports the following API:
 XXX todo:
 handling of the network nodes? 
 when and how to update neighbors
+drop isolated nodes from the network/handle sparse network. 
 
 do we need @ids?
  -> Yes, here's why: 
@@ -76,12 +77,26 @@ class LMS
         neighbor_list += @network.neighbors(id)
       }
       neighbor_list = neighbor_list.uniq #removes duplicates
+      neighbor_list.delete(nid)
       o_neighbors = neighbor_list
     }
-    
-    @LMSnodes[nid].set_neighbors(neighbor_list)
+    if neighbor_list.include?(nid)
+      raise "neighbor list of #{nid} should not include itself"
+    end
+    if neighbor_list.length == 0
+      puts "Deleting disconnected node #{nid}"
+      removeNode(nid)
+    else
+      @LMSnodes[nid].set_neighbors(neighbor_list)
+    end
   end
   
+  def removeNode(nid)
+    @LMSnodes.delete(nid)
+    @network.remove(nid)
+    @ids.delete(nid)
+  end
+
   def local_minimum(nid, k)
     #neighbors_update(nid) #update neighbors lazily... 
     neighbor = @LMSnodes[nid].neighbors
