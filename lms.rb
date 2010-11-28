@@ -5,11 +5,16 @@ require 'pp'
 assumes a network object will be passed in which supports the following API:
     network.getNodes(): returns all nodes in the network
     network.neighbors(id): returns all physical neighbours of node with the given id. 
+=end
 
+=begin NOTES
 XXX todo:
-handling of the network nodes? 
-when and how to update neighbors
-drop isolated nodes from the network/handle sparse network. 
+
+where i left off:
+checking a denser network-- running tests it looks like more replicas are found than are being stored?!
+
+handling of the network nodes - it feels a bit inverted right now 
+introduce node mobility and periodically update neighbors
 
 do we need @ids?
  -> Yes, here's why: 
@@ -18,11 +23,8 @@ do we need @ids?
     comparison of a given key to the hash of a given node.... that's why we
     need the @ids... to find the hash of a given node    
 
-max_buffer should probably be set on a per-node basis (hmmm how should we implement that?)
-determine the number of replicas based on the adapt() method
-
 need to write:
-  adapt()
+  determine the number of replicas based on the adapt() method
   digest()  (uhmmm... is this the bloomfilters stuff? do we REALLY need it... cause it sounds somewhat painful)
 
 =end
@@ -35,7 +37,7 @@ class LMS
     @nodes = @network.nodes
     @ids= {} # nids -> hash ids
     @LMSnodes= {}  #nids -> lMSNodes
-    #per node
+    # For each node, define an LMSNode object with the appropriate params. 
     @nodes.each{|key, value| 
       @ids[key] = hashId(key)
       @LMSnodes[key] = LMSNode.new(@ids[key], nil, nil)
@@ -85,6 +87,7 @@ class LMS
     if neighbor_list.include?(nid)
       raise "neighbor list of #{nid} should not include itself"
     end
+    # if a node has no neigbors, then it's not part of a connected graph.
     if neighbor_list.length == 0
       puts "Deleting disconnected node #{nid}"
       removeNode(nid)
@@ -100,7 +103,6 @@ class LMS
   end
 
   def local_minimum(nid, k)
-    #neighbors_update(nid) #update neighbors lazily... 
     neighbor = @LMSnodes[nid].neighbors
     id_min = nid
     min_dist = distance(@ids[nid], k)
@@ -118,7 +120,6 @@ class LMS
     probe.walk()
     probe.add_to_path(nid)
     if probe.getLength() > 0
-      #neighbors_update(nid) #update neighbors lazily... might be computationally taxing
       neighbor = @LMSnodes[nid].neighbors
       if neighbor.length > 0
         random = neighbor[rand(neighbor.length)]
@@ -144,6 +145,7 @@ class LMS
   
   def put(initiator, item, data_key, replicas)
     hash = hashId(data_key)
+    successes = 0
     (1..replicas).each {|r| 
       puts "placing replica #{r}"
       walk_length = rand(50) + 10
@@ -153,13 +155,19 @@ class LMS
       success = false
       give_up = false
       while not success and not give_up
-        puts "trying to store message..."
+        #puts "trying to store message..."
         probe = random_walk(initiator, probe)
         last_node = probe.pop_last()
         found_minimum = deterministic_walk(last_node, probe)
         node = @LMSnodes[found_minimum]
       
         if node.bufferFull || node.contains?(probe.getKey())
+          #puts "Local Minima node: #{node.id}" 
+          #puts "Hash: #{hash}"
+          #puts "Buffer full: #{node.bufferFull}"
+          #puts "Contains object already? #{node.contains?(probe.getKey())}"
+          #puts "Path: "
+          #pp(probe.getPath())
           probe.fail()
           if probe.getFailures >= @max_failures
             give_up = true
@@ -170,15 +178,18 @@ class LMS
           end
         else
           success = true
+          successes += 1
           #everything is good, lets add the item to the buffer
           node.add_to_buffer(probe.getKey(), item)
           puts "Replica #{r} from #{initiator} with key '#{data_key}' was stored at 
-                node #{found_minimum.to_s} with #{probe.getFailures} failures"
-          puts "Storage Path:"
-          pp(probe.getPath())
+                node #{found_minimum.to_s} with #{probe.getFailures} failures\n\n"
+          #puts "Storage Path:"
+          #pp(probe.getPath())
         end
       end
     }
+    puts "#{successes} replicas were stored of Item #{data_key} (hash #{hash})\n"
+    puts "------------------------"
   end
 
   def get(initiator, k)
@@ -230,6 +241,10 @@ class Probe
     return @path
   end
   
+  def finalNode()
+    return @path.last
+  end
+
   def add_to_path(nid)
     @path.push(nid)
   end

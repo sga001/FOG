@@ -1,5 +1,7 @@
 require 'uds.rb'
 require 'lms.rb'
+require 'pp'
+
 # require 'pubsub.rb'
 
 # Test the UDS layer
@@ -27,10 +29,10 @@ uds.print_nodes # should print 'no nodes'
 # Play around with all of these numbers to see the difference... is crazy :p
 # but it kinda makes sense
 # initialize uds again since we just removed all the nodes :p
-num_nodes = 40
+num_nodes = 400
 width = 100
 height = 100
-nbr_dist = 50
+nbr_dist = 5
 distance_metric = 'euclidean'
 uds = UDS.new(num_nodes, width, height, nbr_dist, distance_metric) 
 
@@ -51,29 +53,47 @@ review_msg = "the chicken today is terrible"
 ids = uds.nodes
 n1 =  ids.keys[0]
 n2 = ids.keys[num_nodes/2]
+# if there are too many replicas, i think it fails because there's not enough local minima
+replicas = 2
 
-lms.put(n1, nature_msg, 'nature', 10)
-lms.put(n1, event_msg, 'event', 10)
-lms.put(n2, review_msg, 'review', 10)  #notice that I'm inserting it with node 2nd
+lms.put(n1, nature_msg, 'nature', 2)
+lms.put(n1, event_msg, 'event', 2)
+lms.put(n2, review_msg, 'review', 2)  #notice that I'm inserting it with node 2nd
 
 puts " ---- GETS START HERE ----"
-puts "Node #{n1} retrieving items with tag 'event'" 
+puts "Node #{n1} retrieving its OWN item with tag 'event'" 
 node, probe = lms.get(n1, 'event')
-p "Probe returned local minimum #{node.id} with path #{probe.getPath}"
+puts "Probe returned local minimum #{node.id} from #{probe.finalNode} via path #{probe.getPath}
+
+"
 
 puts "Node #{n2} retrieving items with tag 'event'" 
 node, probe = lms.get(n2, 'event')
-p "Probe returned local minimum #{node.id} with path #{probe.getPath}"
+puts "Probe returned local minimum #{node.id} from #{probe.finalNode} via path #{probe.getPath}
+
+"
 
 puts "Node #{n1} retrieving items with tag 'review'" 
-puts lms.get(n1, 'review')
+node, probe = lms.get(n1, 'review')
+puts "Probe returned local minimum #{node.id} from #{probe.finalNode} via path #{probe.getPath}
 
-puts "Node #{n2} retrieving items with tag 'review'" 
-puts lms.get(n2, 'review')
+"
 
-puts "Node #{n1} retrieving items with tag 'nature'" 
-puts lms.get(n1, 'nature')
+puts "Node #{n2} retrieving its OWN item with tag 'review'" 
+node, probe = lms.get(n2, 'review')
+puts "Probe returned local minimum #{node.id} from #{probe.finalNode} via path #{probe.getPath}
 
-puts "Node #{n1} retrieving items with tag 'nature'" 
-puts lms.get(n2, 'nature')
+"
+
+puts "Node #{n1} retrieving its OWN items with tag 'nature'" 
+node, probe = lms.get(n1, 'nature')
+puts "Probe returned local minimum #{node.id} from #{probe.finalNode} via path #{probe.getPath}
+
+"
+
+puts "Node #{n2} retrieving items with tag 'nature'" 
+node, probe = lms.get(n2, 'nature')
+puts "Probe returned local minimum #{node.id} from #{probe.finalNode} via path #{probe.getPath}
+
+"
 
