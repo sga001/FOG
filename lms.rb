@@ -40,7 +40,7 @@ class LMS
     # For each node, define an LMSNode object with the appropriate params. 
     @nodes.each{|key, value| 
       @ids[key] = hashId(key)
-      @LMSnodes[key] = LMSNode.new(@ids[key], nil, nil)
+      @LMSnodes[key] = LMSNode.new(key, @ids[key], nil, nil)
       neighbors_update(key)
     }
   end
@@ -49,7 +49,7 @@ class LMS
     new_id = @network.add(x,y)
     @ids[new_id] = hashID(new_id)
     # create a new node with no neighbours, and then call neighbors_update. 
-    @LMSnodes[new_id] = LMSNode.new(@ids[new_id], nil, buffer_size)
+    @LMSnodes[new_id] = LMSNode.new(new_id, @ids[new_id], nil, buffer_size)
     neighbors_update(new_id)
   end
 
@@ -181,10 +181,9 @@ class LMS
           successes += 1
           #everything is good, lets add the item to the buffer
           node.add_to_buffer(probe.getKey(), item)
-          puts "Replica #{r} from #{initiator} with key '#{data_key}' was stored at 
-                node #{found_minimum.to_s} with #{probe.getFailures} failures\n\n"
-          #puts "Storage Path:"
-          #pp(probe.getPath())
+          puts "Replica #{r} from #{initiator} with key '#{data_key}' was stored at" \
+               + " node #{found_minimum.to_s} with #{probe.getFailures} failures"
+          puts "Storage Path: " + probe.getStringPath()
         end
       end
     }
@@ -245,6 +244,14 @@ class Probe
     return @path.last
   end
 
+  def getStringPath()
+    s = ""
+    @path.each{|p|
+      s += p.to_s + "/"
+    }
+    return s.chop
+  end
+  
   def add_to_path(nid)
     @path.push(nid)
   end
@@ -278,14 +285,18 @@ class PUTProbe < Probe
 end
 
 class LMSNode
-  def initialize(id, neighbors, buffer_size=nil )
-    @id, @neighbors = id, neighbors
+  def initialize(realId, id, neighbors, buffer_size=nil )
+    @realId, @id, @neighbors = realId, id, neighbors
     if buffer_size
         @max_buffer = buffer_size
     else
         @max_buffer = rand(20)
     end
     @buffer = {} 
+  end
+  
+  def getRealId()
+    return @realId
   end
   
   def id

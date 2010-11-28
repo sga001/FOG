@@ -5,6 +5,7 @@ require 'pp'
 # require 'pubsub.rb'
 
 # Test the UDS layer
+=begin
 uds = UDS.new(5, 100, 100, 15, "euclidean")
 n1 = uds.add(50, 50)
 n2 = uds.add(50, 40)
@@ -23,7 +24,7 @@ uds.remove(n2)
 uds.remove(n3) 
 uds.remove_all()
 uds.print_nodes # should print 'no nodes'
-
+=end
 
 # Set up the physical network
 # Play around with all of these numbers to see the difference... is crazy :p
@@ -63,15 +64,11 @@ lms.put(n2, review_msg, 'review', 2)  #notice that I'm inserting it with node 2n
 puts " ---- GETS START HERE ----"
 puts "Node #{n1} retrieving its OWN item with tag 'event'" 
 node, probe = lms.get(n1, 'event')
-puts "Probe returned local minimum #{node.id} from #{probe.finalNode} via path #{probe.getPath}
-
-"
+p "Probe returned local minimum #{node.getRealId()} with path #{probe.getStringPath}"
 
 puts "Node #{n2} retrieving items with tag 'event'" 
 node, probe = lms.get(n2, 'event')
-puts "Probe returned local minimum #{node.id} from #{probe.finalNode} via path #{probe.getPath}
-
-"
+p "Probe returned local minimum #{node.getRealId()} with path #{probe.getStringPath}"
 
 puts "Node #{n1} retrieving items with tag 'review'" 
 node, probe = lms.get(n1, 'review')
