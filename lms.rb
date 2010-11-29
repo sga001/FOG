@@ -5,6 +5,10 @@ require 'pp'
 assumes a network object will be passed in which supports the following API:
     network.getNodes(): returns all nodes in the network
     network.neighbors(id): returns all physical neighbours of node with the given id. 
+
+LMS handles replica determination, possibly based on dynamic criteria passed in
+from individual publishing nodes.  
+
 =end
 
 =begin NOTES
@@ -13,8 +17,9 @@ XXX todo:
 where i left off:
 checking a denser network-- running tests it looks like more replicas are found than are being stored?!
 
-handling of the network nodes - it feels a bit inverted right now 
-introduce node mobility and periodically update neighbors
+handling of the network nodes - it feels a bit inverted right now. each layer
+wraps the lower layers' node objects, but has to define its own add() and
+remove() methods. 
 
 do we need @ids?
  -> Yes, here's why: 
@@ -24,9 +29,12 @@ do we need @ids?
     need the @ids... to find the hash of a given node    
 
 need to write:
+  introduce node mobility and periodically update neighbors
+  delete() method for stored objects?
   determine the number of replicas based on the adapt() method
-  digest()  (uhmmm... is this the bloomfilters stuff? do we REALLY need it... cause it sounds somewhat painful)
-
+  digest()  (uhmmm... is this the bloomfilters stuff? do we REALLY need it...
+  cause it sounds somewhat painful)
+  
 =end
 
 $dup_calls = 0
@@ -51,6 +59,10 @@ class LMS
     # create a new node with no neighbours, and then call neighbors_update. 
     @LMSnodes[new_id] = LMSNode.new(new_id, @ids[new_id], nil, buffer_size)
     neighbors_update(new_id)
+  end
+
+  def nodes
+    return @LMSnodes
   end
 
   def hashId(nid)
