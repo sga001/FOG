@@ -1,4 +1,6 @@
 require 'uds.rb'
+require 'lms.rb'
+require 'pp'
 
 =begin
 A publish/subscribe mechanism. Runs on each node in the network. 
@@ -53,6 +55,14 @@ class PubSub
     @psNodes[id] = PSNode.new(@routing_layer.nodes[id], subscriptions)
   end
   
+  def query(nid, q)
+  end
+
+  def remind()
+    # remind your neighbours of the messages you have by issuing a digest to
+    # them. 
+  end
+
 
 end
 
