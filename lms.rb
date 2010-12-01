@@ -1,6 +1,7 @@
 require 'digest/sha1'
 require 'uds.rb'
 require 'pp'
+
 =begin
 assumes a network object will be passed in which supports the following API:
     network.getNodes(): returns all nodes in the network
@@ -15,18 +16,8 @@ from individual publishing nodes.
 XXX todo:
 
 where i left off:
-checking a denser network-- running tests it looks like more replicas are found than are being stored?!
-
-handling of the network nodes - it feels a bit inverted right now. each layer
-wraps the lower layers' node objects, but has to define its own add() and
-remove() methods. 
-
-do we need @ids?
- -> Yes, here's why: 
-    Everything we do is mostly using NIDs (i.e. the ids returned from the
-    physical network nodes)... except the distance
-    comparison of a given key to the hash of a given node.... that's why we
-    need the @ids... to find the hash of a given node    
+checking a denser network-- running tests it looks like more replicas are found
+than are being stored?!
 
 need to write:
   introduce node mobility and periodically update neighbors
@@ -34,57 +25,41 @@ need to write:
   determine the number of replicas based on the adapt() method
   digest()  (uhmmm... is this the bloomfilters stuff? do we REALLY need it...
   cause it sounds somewhat painful)
-  
+  god needs to keep time.   
+  implement time and radius for subscriptions  
 =end
 
-$dup_calls = 0
-
 class LMS
-  def initialize(h, lambda_, network, max_failures)
-    @hops, @lambda_, @network, @max_failures = h, lambda_, network, max_failures
-    @nodes = @network.nodes
-    @ids= {} # nids -> hash ids
-    @LMSnodes= {}  #nids -> lMSNodes
-    # For each node, define an LMSNode object with the appropriate params. 
-    @nodes.each{|key, value| 
-      @ids[key] = hashId(key)
-      @LMSnodes[key] = LMSNode.new(key, @ids[key], nil, nil)
-      neighbors_update(key)
-    }
-  end
-  
-  def addNode(x=nil, y=nil, buffer_size=nil)
-    new_id = @network.add(x,y)
-    @ids[new_id] = hashID(new_id)
-    # create a new node with no neighbours, and then call neighbors_update. 
-    @LMSnodes[new_id] = LMSNode.new(new_id, @ids[new_id], nil, buffer_size)
-    neighbors_update(new_id)
+  # instatiated for each node. 
+  def initialize(nid, hops, lambda_, buffer, max_buffer, max_failures)
+    @hops, @lambda, @network, @max_failures = hops, lambda_, network, max_failures
+
+    # keep track of the parent node's ID. (the externally facing one) 
+    @nid = nid
+    @hashID= computeHash(nid)
+
+    # max allowable failures in trying to store an item
+    @max_failures = max_failures
+    @max_buffer = max_buffer
+
+    # LMS gets access to the parent node's buffer
+    @buffer = buffer
+
+    # initialize neighbours
+    @neighbors = []
+    neighbors_update()
   end
 
-  def nodes
-    return @LMSnodes
-  end
-
-  def hashId(nid)
+  def computeHash(nid)
    d = Digest::SHA1.hexdigest(nid.to_s).hex
-   return d.modulo(2**@lambda_)
+   return d.modulo(2**@lambda)
   end
-  
-  def distance(k1, k2)
-    w1 = (k1 - k2).modulo(2**@lambda_)
-    w2 = (k2 - k1).modulo(2**@lambda_)
-    if w1 < w2
-      return w1
-    else
-      return w2
-    end
+
+  def hashID
+    return @hashID
   end
-  
-  def neighbors(nid)
-   return @LMSnodes[nid].neighbors()
-  end
-  
-  def neighbors_update(nid)
+
+  def neighbors_update()
     o_neighbors = @network.neighbors(nid)
     neighbor_list = o_neighbors
     num = 1..@hops      
@@ -107,19 +82,29 @@ class LMS
       @LMSnodes[nid].set_neighbors(neighbor_list)
     end
   end
+
+  def distance(hash1, hash2)
+    # computes distance between two hashes-- hashes can be nodes or data tags. 
+    w1 = (hash1 - hash2).modulo(2**@lambda)
+    w2 = (hash2 - hash1).modulo(2**@lambda)
+    if w1 < w2
+      return w1
+    else
+      return w2
+    end
+  end
   
-  def removeNode(nid)
-    @LMSnodes.delete(nid)
-    @network.remove(nid)
-    @ids.delete(nid)
+  def neighbors()
+    return @neighbors
   end
 
-  def local_minimum(nid, k)
-    neighbor = @LMSnodes[nid].neighbors
+  def local_minimum(hashID, k)
+    # returns the node whose hash forms a local minimum with the key to be
+    # stored. 
     id_min = nid
-    min_dist = distance(@ids[nid], k)
-    neighbor.each{|id|
-      dist = distance(@ids[id], k)
+    min_dist = distance(hashID, k)
+    @neighbors.each{|id|
+      dist = distance(hashID, k)
       if dist < min_dist
         min_dist = dist
         id_min = id
@@ -128,13 +113,12 @@ class LMS
     return id_min
   end
   
-  def random_walk(nid, probe)
+  def random_walk(hashID, probe)
     probe.walk()
-    probe.add_to_path(nid)
+    probe.add_to_path(hashID)
     if probe.getLength() > 0
-      neighbor = @LMSnodes[nid].neighbors
-      if neighbor.length > 0
-        random = neighbor[rand(neighbor.length)]
+      if @neighbors.length > 0
+        random = @neighbors[rand(@neighbors.length)]
         return random_walk(random, probe)
       else
         probe.setLength(0)
@@ -155,8 +139,9 @@ class LMS
     end
   end
   
-  def put(initiator, item, data_key, replicas)
+  def put(item, data_key, replicas)
     hash = hashId(data_key)
+    initiator = @nid
     successes = 0
     (1..replicas).each {|r| 
       puts "placing replica #{r}"
@@ -167,19 +152,12 @@ class LMS
       success = false
       give_up = false
       while not success and not give_up
-        #puts "trying to store message..."
         probe = random_walk(initiator, probe)
         last_node = probe.pop_last()
         found_minimum = deterministic_walk(last_node, probe)
         node = @LMSnodes[found_minimum]
       
         if node.bufferFull || node.contains?(probe.getKey())
-          #puts "Local Minima node: #{node.id}" 
-          #puts "Hash: #{hash}"
-          #puts "Buffer full: #{node.bufferFull}"
-          #puts "Contains object already? #{node.contains?(probe.getKey())}"
-          #puts "Path: "
-          #pp(probe.getPath())
           probe.fail()
           if probe.getFailures >= @max_failures
             give_up = true
@@ -189,10 +167,10 @@ class LMS
             probe.clearPath()
           end
         else
+          #everything is good, lets add the item to the buffer
           success = true
           successes += 1
-          #everything is good, lets add the item to the buffer
-          node.add_to_buffer(probe.getKey(), item)
+          node.bufferAdd(probe.getKey(), item)
           puts "Replica #{r} from #{initiator} with key '#{data_key}' was stored at" \
                + " node #{found_minimum.to_s} with #{probe.getFailures} failures"
           puts "Storage Path: " + probe.getStringPath()
@@ -203,10 +181,11 @@ class LMS
     puts "------------------------"
   end
 
-  def get(initiator, k)
+  def get(k)
       k = hashId(k)
       walk_length = rand(10) + 5
       path = []
+      initiator = @nid
       probe = Probe.new(initiator, k, walk_length, path)
       probe = random_walk(initiator, probe)
       last_node = probe.pop_last()
@@ -214,13 +193,37 @@ class LMS
       node = @LMSnodes[found_minimum]
    
       return node, probe
-#      if node.contains?(probe.getKey())
-#        return node.get(probe.getKey())
-#      else
-       #failsauce...
-#       return nil
-#      end
   end
+
+  def bufferAdd(k, item)
+    unless @buffer.length >= @max_buffer
+      @buffer.store(k, item)
+    else
+      raise "Max buffer size exceeded"
+    end
+  end
+  
+  def contains?(k)
+    return @buffer.key?(k)
+  end
+
+  def bufferFull
+    if @buffer.length >= @max_buffer
+      return true
+    else
+      return false
+    end
+  end
+
+  def bufferLength()
+    return @buffer.length
+  end
+  
+  def retrieve(k)
+    return @buffer[k]
+  end
+
+
 end
 
 class Probe
@@ -296,55 +299,3 @@ class PUTProbe < Probe
   end
 end
 
-class LMSNode
-  def initialize(realId, id, neighbors, buffer_size=nil )
-    @realId, @id, @neighbors = realId, id, neighbors
-    if buffer_size
-        @max_buffer = buffer_size
-    else
-        @max_buffer = rand(20)
-    end
-    @buffer = {} 
-  end
-  
-  def getRealId()
-    return @realId
-  end
-  
-  def id
-    return @id
-  end
-
-  def neighbors()
-    return @neighbors
-  end
-  
-  def set_neighbors(neighbors)
-    @neighbors = neighbors
-  end
-  
-  def add_to_buffer(k, item)
-    raise "Max buffer size exceeded" if @buffer.length >= @max_buffer
-    @buffer.store(k, item)
-  end
-  
-  def contains?(k)
-    return @buffer.key?(k)
-  end
-  
-  def bufferFull
-    if @buffer.length >= @max_buffer
-      return true
-    else
-      return false
-    end
-  end
-
-  def bufferLength()
-    return @buffer.length
-  end
-  
-  def get(k)
-    return @buffer[k]
-  end
-end

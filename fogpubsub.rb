@@ -6,38 +6,38 @@ require 'pp'
 A publish/subscribe mechanism. Runs on each node in the network. 
 =end
 
-class PSNode
-  # Publish/Subscribe nodes extend their lower level node by adding a list of
-  # subscriptions. 
 
-  def initialize(node, subscriptions=nil)
-    @node = node
+class FogNode
+  def initialize(nid, x=nil, y=nil, subscriptions=nil, routing, lambda_, 
+                 hops, buffer_size, max_failures)
+    @nid = nid
+    @x = x 
+    @y = y
     @subscriptions = subscriptions
+    @max_buffer = buffer_size ||= rand(20)
+    @buffer = {}
+    # expects routing interface to implement put, get
+    @routing = routing(@nid, hops, lambda_, @buffer, @max_buffer, max_failures) 
+    @neighbors = nil
+    # initialize neighbor list
+    @routing.neighbours_update() 
   end
 
-  def addSubscription(tag)
-    @subscriptions.push(tag) if not @subscriptions.include?(tag)
-  end 
-
-  def deleteSubscription(tag)
-    @subscriptions.delete(tag)
+  def realID
+    return @nid
   end
 
-end
+  # --------------------------------------------------
+  # publish, subscribe and fog application layer stuff
+  # --------------------------------------------------
 
+  def deliver
+  end
 
-class PubSub
+  def store
+  end
 
-  def initialize(routing_layer)
-    @routing = routing_layer
-    @psNodes = {} 
-    routing_layer.nodes.each { |nid, node|
-      # if nodes already exist, keep the same node IDs 
-      @psNodes[nid] = PSNode.new(node, subscriptions=nil)
-    }    
-  end 
-
-  def publish(nid, item, tag, replicas)
+  def publish(nid, item, tag, expiry, radius, replicas)
     # currently just calls the PUT method of the routing/storage layer
     @routing.put(nid, item, tag, replicas)
   end
@@ -50,11 +50,6 @@ class PubSub
   def inspect(nid, publication)
   end
   
-  def addNode(x=nil, y=nil, buffer_size=nil, subscriptions=[])
-    id = @routing_layer.addNode(x,y,buffer_size)
-    @psNodes[id] = PSNode.new(@routing_layer.nodes[id], subscriptions)
-  end
-  
   def query(nid, q)
   end
 
@@ -62,6 +57,39 @@ class PubSub
     # remind your neighbours of the messages you have by issuing a digest to
     # them. 
   end
+
+  def addSubscription(tag)
+    @subscriptions.push(tag) if not @subscriptions.include?(tag)
+  end 
+
+  def deleteSubscription(tag)
+    @subscriptions.delete(tag)
+  end
+
+  # --------------------------------------------------
+  # Location methods
+  # --------------------------------------------------
+
+  def x
+    return @x
+  end
+
+  def y
+    return @y
+  end
+
+  def x=(value)
+    @x = value
+  end 
+
+  def y=(value)
+    @y = value
+  end
+
+  def to_s
+    return "[" + @x.to_s + "," + @y.to_s + "]"
+  end
+
 
 
 end
