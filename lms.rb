@@ -9,41 +9,22 @@ assumes a network object will be passed in which supports the following API:
 
 LMS handles replica determination, possibly based on dynamic criteria passed in
 from individual publishing nodes.  
-
-=end
-
-=begin NOTES
-XXX todo:
-
-where i left off:
-checking a denser network-- running tests it looks like more replicas are found
-than are being stored?!
-
-need to write:
-  introduce node mobility and periodically update neighbors
-  delete() method for stored objects?
-  determine the number of replicas based on the adapt() method
-  digest()  (uhmmm... is this the bloomfilters stuff? do we REALLY need it...
-  cause it sounds somewhat painful)
-  god needs to keep time.   
-  implement time and radius for subscriptions  
 =end
 
 class LMS
   # instatiated for each node. 
-  def initialize(nid, hops, lambda_, buffer, max_buffer, max_failures)
-    @hops, @lambda, @network, @max_failures = hops, lambda_, network, max_failures
+  def initialize(nid, hops, lambda_, max_failures, god)
+    @hops, @lambda, @max_failures = hops, lambda_, max_failures 
 
     # keep track of the parent node's ID. (the externally facing one) 
     @nid = nid
     @hashID= computeHash(nid)
 
     # max allowable failures in trying to store an item
-    @max_failures = max_failures
-    @max_buffer = max_buffer
-
-    # LMS gets access to the parent node's buffer
-    @buffer = buffer
+    @max_failures = max_failures 
+    
+    # Have god as a reference
+    @god = god
 
     # initialize neighbours
     @neighbors = []
@@ -60,12 +41,12 @@ class LMS
   end
 
   def neighbors_update()
-    o_neighbors = @network.neighbors(nid)
+    o_neighbors = @god.getNeighbors(nid)
     neighbor_list = o_neighbors
     num = 1..@hops      
     num.each{
       o_neighbors.each{|id|
-        neighbor_list += @network.neighbors(id)
+        neighbor_list += @god.getNeighbors(id)
       }
       neighbor_list = neighbor_list.uniq #removes duplicates
       neighbor_list.delete(nid)
@@ -74,13 +55,8 @@ class LMS
     if neighbor_list.include?(nid)
       raise "neighbor list of #{nid} should not include itself"
     end
-    # if a node has no neigbors, then it's not part of a connected graph.
-    if neighbor_list.length == 0
-      puts "Deleting disconnected node #{nid}"
-      removeNode(nid)
-    else
-      @LMSnodes[nid].set_neighbors(neighbor_list)
-    end
+   
+    @neighbors = neighbor_list
   end
 
   def distance(hash1, hash2)
@@ -155,9 +131,10 @@ class LMS
         probe = random_walk(initiator, probe)
         last_node = probe.pop_last()
         found_minimum = deterministic_walk(last_node, probe)
-        node = @LMSnodes[found_minimum]
+        # problem is here..
+        node = @god.getNode(found_minimum)
       
-        if node.bufferFull || node.contains?(probe.getKey())
+        if node.bufferFull? || node.contains?(probe.getKey())
           probe.fail()
           if probe.getFailures >= @max_failures
             give_up = true
@@ -190,40 +167,11 @@ class LMS
       probe = random_walk(initiator, probe)
       last_node = probe.pop_last()
       found_minimum = deterministic_walk(last_node, probe)
-      node = @LMSnodes[found_minimum]
+      node = @god.getNode(found_minimum)
    
       return node, probe
   end
-
-  def bufferAdd(k, item)
-    unless @buffer.length >= @max_buffer
-      @buffer.store(k, item)
-    else
-      raise "Max buffer size exceeded"
-    end
-  end
   
-  def contains?(k)
-    return @buffer.key?(k)
-  end
-
-  def bufferFull
-    if @buffer.length >= @max_buffer
-      return true
-    else
-      return false
-    end
-  end
-
-  def bufferLength()
-    return @buffer.length
-  end
-  
-  def retrieve(k)
-    return @buffer[k]
-  end
-
-
 end
 
 class Probe
