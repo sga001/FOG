@@ -1,34 +1,45 @@
 #!/usr/bin/ruby
 
 class God
-  # The God class is all-seeing and all-knowing, and manages the existence and
-  # movement of nodes. Nodes themselves are defined externally, and should 
-  # support arbitrary behaviour. 
+=begin
+  The God class is all-seeing and all-knowing, and manages the existence and
+  movement of Nodes themselves are defined externally, and should 
+  support arbitrary behaviour
+=end
 
   def initialize(topology)
     @topology = topology
-    # nodes is a hash of id:node pairs. Nodes are expected to expose x() and
-    # y() methods. 
+    # nodes is a hash of id:node pairs Nodes are expected to expose x() and
+    # y() methods
     @nodes = {}
-    # God will periodically update the physical neighbors of each node. 
+    # God will periodically update the physical neighbors of each node
     @physical_neighbors = {}
   end
 
   def updateAllNeighbors()
     @nodes.each{|nid|
-      nrbList = @topology.allNeighbors(nid)
-      @nodes[nid].storeNeighbors(nbrList)
+      nrbList = @topology.allNeighbors(nid, @nodes)
+      @physical_neighbors[nid] = nbrList
     }
+  end
 
   def updateNeighbors(nid)
-    @physical_neighbors[nid] = @topology.allNeighbors(nid)
+    @physical_neighbors[nid] = @topology.allNeighbors(nid, @nodes)
   end
 
   def nodes
     return @nodes
   end
   
-  def add(node, nid)
+  def getNeighbors(nid)
+    return @physical_neighbors[nid]
+  end
+  
+  def getNode(nid)
+    return @nodes[nid]
+  end
+  
+  def add(nid, node)
     @nodes[nid] = node
     updateNeighbors(nid) 
   end
@@ -54,13 +65,13 @@ class God
   def location(nid)
     return [@nodes[nid].x, @nodes[nid].y]
   end
-
 end
 
 class UDS
-  # UDS stands for uniform disk simulator. It simulates the basic broadcast
+=begin UDS stands for uniform disk simulator It simulates the basic broadcast
   # environment of a physical layer of a network with the specified size and
-  # distance metrix.  
+  # distance metrix
+=end 
 
   def initialize(width, height, nbr_dist=1, distance_metric="euclidean")
     @width, @height, @nbr_dist, @distance_metric = width, height, nbr_dist, distance_metric
@@ -75,28 +86,26 @@ class UDS
   end
 
   def distance(n1, n2)
-    # compute the euclidean distance between nodes a and b. 
+    # compute the euclidean distance between nodes a and b
     Math.sqrt((n1.x - n2.x)**2 + (n1.y - n2.y)**2)
   end
 
  def neighbors?(n1, n2)
-    # return true or false depending on whether the two nodes are neighbours. 
+    # return true or false depending on whether the two nodes are neighbours
     if distance(n1, n2) > @nbr_dist
       return false
     else
       return true
     end
+  end
 
  def allNeighbors(thisnid, allnodes)
     nbrs = []
     allnodes.each do |nid, node|
-    if (thisnid != nid) and distance(thisnid,nid) <= @nbr_dist
+      if (thisnid != nid) and distance(thisnid,nid) <= @nbr_dist
         nbrs.push(nid)
+      end
     end
     return nbrs
-  end
-
-
+ end
 end
-
-
