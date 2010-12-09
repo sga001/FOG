@@ -1,6 +1,7 @@
 require 'uds.rb'
 require 'lms.rb'
 require 'pp'
+require 'bloomfilter.rb'
 
 =begin
 A publish/subscribe mechanism. Runs on each node in the network. 
@@ -8,23 +9,36 @@ A publish/subscribe mechanism. Runs on each node in the network.
 
 
 class FogNode
-  def initialize(nid, routing, lambda_, hops, buffer_size, max_failures, god, x, y, subscriptions=nil)
+  def initialize(nid, routing, lambda_, hops, buffer_size, max_failures, x, y, subscriptions=nil)
     @nid = nid
     @x = x
     @y = y
     @subscriptions = subscriptions || []
     @max_buffer = buffer_size ||= rand(20)
+    @current_buffer = 0
     @buffer = {}
     @digest = BloomFilter.new(512, 10) # 512 bits, 10 hash functions
-    @god = god
     # expects routing interface to implement put, get
-    @routing = routing.new(@nid, hops, lambda_, max_failures, @god) 
+    @routing = routing.new(self, hops, lambda_, max_failures) 
     # initialize neighbor list
-    @routing.neighbours_update() 
+    @neighbors = [] #-> FogNodes
   end
 
   def realID
     return @nid
+  end
+
+  #these are the 1 hop neighbors... they are FogNodes!!!
+  def updateNeighbors (list)
+    @neighbors = list
+  end
+  
+  def getRouting()
+    return @routing
+  end
+  
+  def getNeighbors()
+    return @neighbors
   end
 
   # --------------------------------------------------
@@ -37,11 +51,10 @@ class FogNode
   def store
   end
 
-  def publish(item, tag, expiry, radius, replicas)
-    # currently just calls the PUT method of the routing/storage layer
-    key = Digest::SHA1.hexdigest(item.to_s) #this makes it a unique key
-    value = FogDataObject.new(item, tag, expiry, radius)
-    @routing.put(key, value, replicas)
+  def publish(tag, message, expiry, radius, replicas)
+    # currently just calls the PUT method of the routing layer   
+    value = FogDataObject.new(message, expiry, radius)
+    @routing.put(tag, value, replicas)
   end
 
   def subscribe(nid, tag)
@@ -52,7 +65,19 @@ class FogNode
   def inspect(nid, publication)
   end
   
-  def query(nid, q)
+  def query(tag)
+    #currently just calls the GET method 20 times of the routing layer
+    message_list =  []
+    (1...20).each{
+      fog_items, probe = @routing.get(tag)
+      if fog_items
+        fog_items.each{|item| 
+        message_list.push(item.message)
+       }
+       end
+    }
+    
+    return message_list.uniq
   end
 
   def remind()
@@ -87,11 +112,15 @@ class FogNode
   def y=(value)
     @y = value
   end
-
+  
   def to_s
     return "[" + @x.to_s + "," + @y.to_s + "]"
   end
 
+  def distance(x, y)
+    return Math.sqrt((@x - x)**2 + (@y - y)**2)
+  end
+  
   # --------------------------------------------------
   # Physical Storage Methods
   # --------------------------------------------------
@@ -99,19 +128,39 @@ class FogNode
    
    def bufferAdd(k, item)
     unless bufferFull?
-      @buffer.store(k, item)
-      @digest.insert(k)
+      if containsKey?(k)
+        list = @buffer[k]
+        list.push(item)
+        @buffer.store(k, list)
+      else
+        list = []
+        list.push(item)
+        @buffer.store(k, list)
+        @digest.insert(k)
+      end
+      @current_buffer += 1 
     else
       raise "Max buffer size exceeded"
     end
   end
   
-  def contains?(k)
+  def containsKey?(k)
     return @buffer.key?(k)
+  end
+  
+  def containsData?(item)
+    @buffer.each{|key, value|
+      value.each{|data|
+        if data == item
+          return true
+        end
+      }
+    }
+    return false
   end
 
   def bufferFull?
-    if @buffer.length >= @max_buffer
+    if @current_buffer >= @max_buffer
       return true
     else
       return false
@@ -119,7 +168,7 @@ class FogNode
   end
 
   def bufferLength()
-    return @buffer.length
+    return @current_buffer
   end
   
   def retrieve(k)
@@ -136,12 +185,8 @@ end
   This class represents a Fog Data Object which is composed of: Tag, Message, Expire Date and Radius
 =end
 class FogDataObject
-  def initialize(tag, message, expiry, radius)
-    @tag, @message, @expiry, @radius = tag, message, expiry, radius
-  end
-  
-  def tag
-    return @tag
+  def initialize(message, expiry, radius)
+    @message, @expiry, @radius = message, expiry, radius
   end
   
   def message

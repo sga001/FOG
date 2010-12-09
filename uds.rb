@@ -12,36 +12,31 @@ class God
     # nodes is a hash of id:node pairs Nodes are expected to expose x() and
     # y() methods
     @nodes = {}
-    # God will periodically update the physical neighbors of each node
-    @physical_neighbors = {}
   end
 
   def updateAllNeighbors()
-    @nodes.each{|nid|
-      nrbList = @topology.allNeighbors(nid, @nodes)
-      @physical_neighbors[nid] = nbrList
+    @nodes.each{|nid, node|
+      updateNeighbors(nid)
     }
   end
 
   def updateNeighbors(nid)
-    @physical_neighbors[nid] = @topology.allNeighbors(nid, @nodes)
+    nbrList = @topology.allNeighbors(@nodes[nid], @nodes)   
+    @nodes[nid].updateNeighbors(nbrList)
   end
 
   def nodes
     return @nodes
   end
   
-  def getNeighbors(nid)
-    return @physical_neighbors[nid]
-  end
   
   def getNode(nid)
     return @nodes[nid]
   end
   
-  def add(nid, node)
-    @nodes[nid] = node
-    updateNeighbors(nid) 
+  def add(node)
+    @nodes[node.realID] = node
+    updateNeighbors(node.realID) 
   end
  
   def remove(nid)
@@ -87,7 +82,7 @@ class UDS
 
   def distance(n1, n2)
     # compute the euclidean distance between nodes a and b
-    Math.sqrt((n1.x - n2.x)**2 + (n1.y - n2.y)**2)
+    return Math.sqrt((n1.x - n2.x)**2 + (n1.y - n2.y)**2)
   end
 
  def neighbors?(n1, n2)
@@ -99,13 +94,13 @@ class UDS
     end
   end
 
- def allNeighbors(thisnid, allnodes)
+ def allNeighbors(thisnode, allnodes)
     nbrs = []
-    allnodes.each do |nid, node|
-      if (thisnid != nid) and distance(thisnid,nid) <= @nbr_dist
-        nbrs.push(nid)
+    allnodes.each{|nid, node|
+      if (thisnode != node) and distance(thisnode,node) <= @nbr_dist
+        nbrs.push(node)
       end
-    end
+    }
     return nbrs
  end
 end

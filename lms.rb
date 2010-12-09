@@ -13,22 +13,15 @@ from individual publishing nodes.
 
 class LMS
   # instatiated for each node. 
-  def initialize(nid, hops, lambda_, max_failures, god)
+  def initialize(node, hops, lambda_, max_failures)
     @hops, @lambda, @max_failures = hops, lambda_, max_failures 
 
-    # keep track of the parent node's ID. (the externally facing one) 
-    @nid = nid
-    @hashID= computeHash(nid)
-
+    # keep track of the parent node. (the externally facing one) 
+    @node = node
+    @hashID= computeHash(@node.realID)
+    
     # max allowable failures in trying to store an item
     @max_failures = max_failures 
-    
-    # Have god as a reference
-    @god = god
-
-    # initialize neighbours
-    @neighbors = []
-    neighbors_update()
   end
 
   def computeHash(nid)
@@ -40,29 +33,10 @@ class LMS
     return @hashID
   end
 
-  def neighbors_update()
-    o_neighbors = @god.getNeighbors(nid)
-    neighbor_list = o_neighbors
-    num = 1..@hops      
-    num.each{
-      o_neighbors.each{|id|
-        neighbor_list += @god.getNeighbors(id)
-      }
-      neighbor_list = neighbor_list.uniq #removes duplicates
-      neighbor_list.delete(nid)
-      o_neighbors = neighbor_list
-    }
-    if neighbor_list.include?(nid)
-      raise "neighbor list of #{nid} should not include itself"
-    end
-   
-    @neighbors = neighbor_list
-  end
-
-  def distance(hash1, hash2)
-    # computes distance between two hashes-- hashes can be nodes or data tags. 
-    w1 = (hash1 - hash2).modulo(2**@lambda)
-    w2 = (hash2 - hash1).modulo(2**@lambda)
+  def distance(hash2)
+    # computes distance between the current node, and the given key 
+    w1 = (@hashID - hash2).modulo(2**@lambda)
+    w2 = (hash2 - @hashID).modulo(2**@lambda)
     if w1 < w2
       return w1
     else
@@ -70,54 +44,66 @@ class LMS
     end
   end
   
-  def neighbors()
-    return @neighbors
+  def neighborhood
+    neighbors = @node.getNeighbors()
+    h_hop_neighbors = neighbors #list of 1-hop neighbors, now we need to add all h-hop neighbors
+    
+    (1..@hops).each{
+      neighbors.each{|node|
+        h_hop_neighbors += node.getNeighbors()  
+      }
+      h_hop_neighbors = h_hop_neighbors.uniq #remove duplicates
+      h_hop_neighbors.delete(@node)
+      neighbors = h_hop_neighbors
+    }
+    return h_hop_neighbors
   end
-
-  def local_minimum(hashID, k)
-    # returns the node whose hash forms a local minimum with the key to be
-    # stored. 
-    id_min = nid
-    min_dist = distance(hashID, k)
-    @neighbors.each{|id|
-      dist = distance(hashID, k)
+  
+  def local_minimum(k)
+    # returns the node in the h-hop neighborhood whose hash forms a local minimum with the key to be stored
+    min_node = @node
+    min_dist = distance(k)
+    neighbors = neighborhood()
+    neighbors.each{|node|
+      dist = node.getRouting().distance(k)
       if dist < min_dist
         min_dist = dist
-        id_min = id
+        min_node = node
       end
     }
-    return id_min
+    return min_node
   end
   
-  def random_walk(hashID, probe)
+  def random_walk(probe)
+    neighbors = @node.getNeighbors()
     probe.walk()
-    probe.add_to_path(hashID)
+    probe.add_to_path(@node.realID)
     if probe.getLength() > 0
-      if @neighbors.length > 0
-        random = @neighbors[rand(@neighbors.length)]
-        return random_walk(random, probe)
+      if neighbors.length > 0
+        randomNode = neighbors[rand(neighbors.length)]
+        return randomNode.getRouting().random_walk(probe)
       else
         probe.setLength(0)
-        return probe
+        return @node, probe
       end
     else
-      return probe
+      return @node, probe
     end
   end
   
-  def deterministic_walk(nid, probe)
-    probe.add_to_path(nid)
-    v = local_minimum(nid, probe.getKey())
-    if v == nid
-      return nid
+  def deterministic_walk(probe)
+    probe.add_to_path(@node.realID)
+    min_node = local_minimum(probe.getKey())
+    if min_node.realID == @node.realID
+      return @node
     else
-      return deterministic_walk(v, probe)
+      return min_node.getRouting().deterministic_walk(probe)
     end
   end
   
-  def put(item, data_key, replicas)
-    hash = hashId(data_key)
-    initiator = @nid
+  def put(key, item, replicas)
+    hash = computeHash(key)
+    initiator = @node.realID
     successes = 0
     (1..replicas).each {|r| 
       puts "placing replica #{r}"
@@ -128,13 +114,11 @@ class LMS
       success = false
       give_up = false
       while not success and not give_up
-        probe = random_walk(initiator, probe)
-        last_node = probe.pop_last()
-        found_minimum = deterministic_walk(last_node, probe)
-        # problem is here..
-        node = @god.getNode(found_minimum)
+        last_node, probe = random_walk(probe)
+        probe.pop_last() #prevents adding id to path twice
+        node = last_node.getRouting().deterministic_walk(probe)
       
-        if node.bufferFull? || node.contains?(probe.getKey())
+        if node.bufferFull? or (node.containsKey?(key) and node.containsData?(item)) or node.distance(@node.x, @node.y) > item.radius
           probe.fail()
           if probe.getFailures >= @max_failures
             give_up = true
@@ -142,36 +126,33 @@ class LMS
           else
             probe.setLength(walk_length * 2)
             probe.clearPath()
-          end
+          end        
         else
           #everything is good, lets add the item to the buffer
           success = true
           successes += 1
-          node.bufferAdd(probe.getKey(), item)
-          puts "Replica #{r} from #{initiator} with key '#{data_key}' was stored at" \
-               + " node #{found_minimum.to_s} with #{probe.getFailures} failures"
+          node.bufferAdd(key, item)
+          puts "Replica #{r} from #{initiator} with key '#{key}' was stored at" \
+               + " node #{node.realID.to_s} with #{probe.getFailures} failures"
           puts "Storage Path: " + probe.getStringPath()
         end
       end
     }
-    puts "#{successes} replicas were stored of Item #{data_key} (hash #{hash})\n"
+    puts "#{successes} replicas were stored of Item #{key} (hash #{hash})\n"
     puts "------------------------"
   end
 
   def get(k)
-      k = hashId(k)
       walk_length = rand(10) + 5
       path = []
       initiator = @nid
-      probe = Probe.new(initiator, k, walk_length, path)
-      probe = random_walk(initiator, probe)
-      last_node = probe.pop_last()
-      found_minimum = deterministic_walk(last_node, probe)
-      node = @god.getNode(found_minimum)
-   
-      return node, probe
+      probe = Probe.new(initiator, computeHash(k), walk_length, path)
+      last_node, probe = random_walk(probe)
+      probe.pop_last() #prevents adding id to path twice
+      found_minimum = last_node.getRouting().deterministic_walk(probe)
+      item = found_minimum.retrieve(k)
+      return item, probe
   end
-  
 end
 
 class Probe
