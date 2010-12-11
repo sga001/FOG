@@ -21,7 +21,8 @@ class LMS
     @hashID= computeHash(@node.realID)
     
     # max allowable failures in trying to store an item
-    @max_failures = max_failures 
+    @max_failures = max_failures
+    @hash_functions = [1, 2, 3, 4, 5]
   end
 
   def computeHash(nid)
@@ -102,10 +103,10 @@ class LMS
   end
   
   def put(key, item, replicas)
-    hash = computeHash(key)
     initiator = @node.realID
     successes = 0
     (1..replicas).each {|r| 
+      hash = computeHash(key + @hash_functions[rand(@hash_functions.length)].to_s)
       puts "placing replica #{r}"
       walk_length = rand(50) + 10
       puts "initial walk_length: #{walk_length}"
@@ -146,7 +147,8 @@ class LMS
       walk_length = rand(10) + 5
       path = []
       initiator = @nid
-      probe = Probe.new(initiator, computeHash(k), walk_length, path)
+      hash = computeHash(k + @hash_functions[rand(@hash_functions.length)].to_s)
+      probe = Probe.new(initiator, hash, walk_length, path)
       last_node, probe = random_walk(probe)
       probe.pop_last() #prevents adding id to path twice
       found_minimum = last_node.getRouting().deterministic_walk(probe)

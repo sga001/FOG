@@ -1,7 +1,7 @@
 require 'fogpubsub.rb'
 require 'uds.rb'
 require 'lms.rb'
-
+require 'pp'
 =begin
 Time to do complicated tests involving: MOVING AROUND, WEIRD TOPOLOGIES, ETC.
 I also did not implement the TIME DISCRIMINATOR STUFF and therefore expiry doesn't work.
@@ -16,6 +16,8 @@ tags = ["events", "system", "reviews", "happy", "blah", "animals"]
 lambda_ = 256
 hops = 2
 num_nodes = 800
+
+
 
 
 (1..num_nodes).each{|id|
@@ -38,6 +40,10 @@ n1.publish(tag = "haiku", message = "alice’s plaintext", expiry = 20, radius = 5
 n2.publish(tag = "haiku", message = "proxy and delegatee", expiry = 20, radius = 500, replicas = 10)
 n3.publish(tag = "haiku", message = "fear for collusion", expiry = 20, radius = 500, replicas = 10)
 n3.publish(tag = "haiku", message = "<--END-->", expiry = 20, radius = 90, replicas = 10)
+n2.publish(tag = "news", message = "I LOVE FOG", expiry = 20, radius = 500, replicas = 10)
+n2.publish(tag = "news", message = "Poor bobby.. no alien life", expiry = 20, radius = 500, replicas = 10)
+n2.publish(tag = "news", message = "I'm running out of things to say for test cases", expiry = 20, radius = 500, replicas = 10)
+n2.publish(tag = "news", message = "life sucks", expiry = 20, radius = 500, replicas = 10)
 
 puts "\nN2"
 puts n2.query("haiku")
@@ -49,7 +55,22 @@ universe.remove(n3.realID) #remove publishing nodes, just to show that the messa
 universe.remove(n2.realID)
 universe.remove(n1.realID)
 universe.updateAllNeighbors()
-puts "\nNEWGUY"
-puts newguy.query("haiku")
+puts "\nNEWGUY -- BEFORE SUBSCRIPTIONS"
+puts newguy.check()
+puts "\nNEWGUY -- AFTER SUBSCRIPTIONS"
+newguy.addSubscription("haiku")
+pp newguy.check()
+
+n4 = universe.getNode(4)
+
+n4.publish(tag = "haiku", message = "awesome", expiry = 20, radius = 500, replicas = 10)
+n4.publish(tag = "haiku", message = "yay", expiry = 20, radius = 500, replicas = 10)
+
+pp newguy.check()
+pp newguy.cached()
+
+newguy.addSubscription("news")
+pp newguy.check()
+pp newguy.cached()
 
 

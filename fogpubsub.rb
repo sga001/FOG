@@ -22,13 +22,39 @@ class FogNode
     @routing = routing.new(self, hops, lambda_, max_failures) 
     # initialize neighbor list
     @neighbors = [] #-> FogNodes
+    @new_messages = {}
+    @cached_messages = {}
   end
 
   def realID
     return @nid
   end
+  
+  
+  def cache_messages()
+    @new_messages.each{|tag, list|
+      l = []
+      if(@cached_messages.key?(tag))
+        l = @cached_messages[tag]
+      end
+      l+= list
+      @cached_messages.store(tag, l)
+    }
+    @new_messages = {}
+  end
 
-  #these are the 1 hop neighbors... they are FogNodes!!!
+  def check()
+    @subscriptions.each{|tag|
+      @new_messages.store(tag, query(tag))
+    }
+    list = @new_messages
+    cache_messages()
+
+    return list
+  end
+  
+  
+  #these are the 1 hop neighbors... they are FogNodes!!!  
   def updateNeighbors (list)
     @neighbors = list
   end
@@ -45,24 +71,10 @@ class FogNode
   # publish, subscribe and fog application layer stuff
   # --------------------------------------------------
 
-  def deliver
-  end
-
-  def store
-  end
-
   def publish(tag, message, expiry, radius, replicas)
     # currently just calls the PUT method of the routing layer   
     value = FogDataObject.new(message, expiry, radius)
     @routing.put(tag, value, replicas)
-  end
-
-  def subscribe(nid, tag)
-    # add tag-based subscription information to a given node
-    @psNodes[nid].addSubscription(tag) 
-  end
-
-  def inspect(nid, publication)
   end
   
   def query(tag)
@@ -72,7 +84,14 @@ class FogNode
       fog_items, probe = @routing.get(tag)
       if fog_items
         fog_items.each{|item| 
-        message_list.push(item.message)
+        if @cached_messages.key?(tag)
+          l = @cached_messages[tag]
+          if not l.include?(item.message)
+            message_list.push(item.message)
+          end
+        else
+          message_list.push(item.message)
+        end 
        }
        end
     }
@@ -80,7 +99,10 @@ class FogNode
     return message_list.uniq
   end
 
-  def remind()
+  def cached()
+    return @cached_messages
+  end
+  def remind() #is this really necessary
     # remind your neighbours of the messages you have by issuing a digest to
     # them. 
   end
