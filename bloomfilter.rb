@@ -1,5 +1,5 @@
 require 'bitfield.rb'
-require 'Digest/sha1'
+require 'digest/sha1'
 class BloomFilter
 
 =begin
