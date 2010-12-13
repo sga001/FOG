@@ -3,15 +3,26 @@
 class God
 =begin
   The God class is all-seeing and all-knowing, and manages the existence and
-  movement of Nodes themselves are defined externally, and should 
-  support arbitrary behaviour
+  movement of Nodes. Nodes themselves are defined externally, and should 
+  support arbitrary behaviour. 
 =end
 
-  def initialize(topology)
+  def initialize(topology, input)
     @topology = topology
-    # nodes is a hash of id:node pairs Nodes are expected to expose x() and
-    # y() methods
+    # nodes is a hash of id:node pairs. Nodes are expected to expose x() and
+    # y() methods. 
     @nodes = {}
+    # god keeps time
+    @clock = 0
+    # file object to read instructions from
+    @input = input
+    @input.each { |instruction|
+      # instruction looks like: function_call, [list, of, args]
+      fn, args = instruction.split(",")
+      fn(*args)
+      @clock++
+    }
+
   end
 
   def updateAllNeighbors()
