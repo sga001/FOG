@@ -1,5 +1,11 @@
 #!/usr/bin/ruby
 
+require 'fogpubsub.rb'
+require 'uds.rb'
+require 'lms.rb'
+require 'pp'
+
+
 class God
 =begin
   The God class is all-seeing and all-knowing, and manages the existence and
@@ -7,22 +13,13 @@ class God
   support arbitrary behaviour. 
 =end
 
-  def initialize(topology, input)
+  def initialize(topology, hops)
     @topology = topology
     # nodes is a hash of id:node pairs. Nodes are expected to expose x() and
     # y() methods. 
     @nodes = {}
-    # god keeps time
-    @clock = 0
-    # file object to read instructions from
-    @input = input
-    @input.each { |instruction|
-      # instruction looks like: function_call, [list, of, args]
-      fn, args = instruction.split(",")
-      fn(*args)
-      @clock++
-    }
-
+    # god keeps time - make a note when the universe was created. 
+    @clock = Time.now 
   end
 
   def updateAllNeighbors()
