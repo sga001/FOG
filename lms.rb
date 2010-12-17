@@ -66,6 +66,7 @@ class LMS
     min_dist = distance(k)
     neighbors = neighborhood()
     neighbors.each{|node|
+      # XXX TODO node.getRouting.distance is just distance() in THIS class!
       dist = node.getRouting().distance(k)
       if dist < min_dist
         min_dist = dist
