@@ -5,6 +5,12 @@ require 'bloomfilter.rb'
 
 =begin
 A publish/subscribe mechanism. Runs on each node in the network. 
+
+XXX TODO
+ideally we would split off a second process for each node which would periodically:
+- update its neighbours
+- generate and send out the digest of the replicas it is holding
+- listen for incoming messages
 =end
 
 
@@ -56,6 +62,8 @@ class FogNode
   
   #these are the 1 hop neighbors... they are FogNodes!!!  
   def updateNeighbors (list)
+    # the neighbors being passed in are physical neihgbors. neighbors in the
+    # routing overlay may be different.  
     @neighbors = list
   end
   
@@ -71,14 +79,20 @@ class FogNode
   # publish, subscribe and fog application layer stuff
   # --------------------------------------------------
 
-  def publish(tag, message, expiry, radius, replicas)
-    # currently just calls the PUT method of the routing layer   
-    value = FogDataObject.new(message, expiry, radius)
+  def publish(tag, message, lifetime, radius, replicas)
+    # calls the PUT method of the routing layer. lifetime specifies a lifetime
+    # for the message in seconds. radius specifies a radius of applicability--
+    # nodes outside this radius from the message will not see it. (this is a
+    # hack right now-- it is still stored just not retuned if the radius is
+    # exceeded. also, it should be a radius from the originator not the replica
+    # host XXX TODO). 
+    value = FogDataObject.new(initiator = @nid, message, lifetime, radius)
     @routing.put(tag, value, replicas)
   end
   
   def query(tag)
-    #currently just calls the GET method 20 times of the routing layer
+    # issues 20 LMS GET probes. the number 20 should be dynamic; probes should
+    # happen in parallel. 
     message_list =  []
     (1...20).each{
       fog_items, probe = @routing.get(tag)
@@ -149,6 +163,8 @@ class FogNode
 
    
    def bufferAdd(k, item)
+    # add the item if new or update the item if that key already exists in the
+    # buffer
     unless bufferFull?
       if containsKey?(k)
         list = @buffer[k]
@@ -204,11 +220,14 @@ class FogNode
 end
 
 =begin
-  This class represents a Fog Data Object which is composed of: Tag, Message, Expire Date and Radius
+  This class represents a Fog Data Object which is composed of: Initiator,
+  Message, Lifetime, and Radius
 =end
 class FogDataObject
-  def initialize(message, expiry, radius)
-    @message, @expiry, @radius = message, expiry, radius
+  def initialize(initiator, message, lifetime, radius)
+    @initiator, @message, @radius = initiator, message, radius
+    @created = Time.now
+    @expiry = Time.now + lifetime
   end
   
   def message
