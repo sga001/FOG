@@ -13,7 +13,7 @@ class God
   support arbitrary behaviour. 
 =end
 
-  def initialize(topology, hops)
+  def initialize(topology)
     @topology = topology
     # nodes is a hash of id:node pairs. Nodes are expected to expose x() and
     # y() methods. 
@@ -44,7 +44,9 @@ class God
   
   def add(node)
     @nodes[node.realID] = node
-    updateNeighbors(node.realID) 
+    # update everyone's neighbours here, not just the new guy. 
+    # XXX this should happen asynchronously. 
+    updateAllNeighbors() 
   end
  
   def remove(nid)
