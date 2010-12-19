@@ -67,6 +67,11 @@ class FogNode
     @neighbors = list
   end
   
+  # synonym for getRouting
+  def routing
+    return @routing
+  end
+
   def getRouting()
     return @routing
   end

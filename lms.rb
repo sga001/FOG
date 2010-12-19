@@ -153,8 +153,26 @@ class LMS
       last_node, probe = random_walk(probe)
       probe.pop_last() #prevents adding id to path twice
       found_minimum = last_node.getRouting().deterministic_walk(probe)
+      # note that 'item' will be null if this LM does not have the item. 
       item = found_minimum.retrieve(k)
+      # return probe so can print stats about path. 
       return item, probe
+  end
+
+  def managedGet(k, max=1000)
+    # repeats the get request until it succeeds (or gets to 'max') and keeps
+    # statistics on failures
+    item_found = false
+    tries = 0
+    until (item_found or tries == max)
+        item_found, stats = get(k)
+        cost = stats.getPath.length
+        tries += 1
+    end
+    # recall = TP/(TP+FN). 'FN' is when get() falsely returns nil. 
+    # in this case the loop stops at TP=1. 
+    recall = 1.0/(tries)
+    return item_found, recall
   end
 end
 
