@@ -1,0 +1,45 @@
+
+publish should return stats about the put
+query should return stats about the put
+need to do anything to lifetime and radius? (at least make radius > width, height?)
+UDS should be a torus not a finite universe. 
+LMS get should have multiple probes, not at the fog layer. 
+
+do LMS paper use adaptive protocol for all experiments?
+i don't think fog node bufferAdd() should not use a list for items w say key
+if fog node is going to have a cache then when it executes a query it should check its own cache first. 
+should results for 'get' requests be statistical? what about put?
+
+time framework
+adaptive protocol - adjust replicas as needed. 
+digests, subscriptions
+radius, time expiry
+when a new guy is added, he should get his own neighbours, but then other nodes' neighbours should update asynchronously. 
+also, the node should update its own neighbours. 
+
+lifetime management should happen in the fog layer. 
+radius management - design (limit protocol?)
+
+### extensions to LMS?
+their model does not allow adding of neighbours - how does apartive protocol perform in this environment?
+LMS with radius-constrained storage
+shared key space? (ie tags not keys) - LMS is designed around unique keys, but in LMS the keys are what we query on. we want a system queriable by tag, but tags are not unique. also by content and 
+LMS over different densities of topology ('node congestion')
+
+### report
+
+what to do about messages with tags not already "in the system". just define
+them on the fly i think, right?
+
+--> to note:
+LMS where the data is a message and its key or keys are its tag(s). 
+multiple messages with the same tag - what happens
+physical space - edges - wraparound?
+currently tags are arbitrary. 
+
+decision not to explore key-space collisions here since that is an extension
+and first we want to demo correctness. 
+
+other factors: num replicas, num probes, max failures, random walk length, length of deterministic walk to the local minima
+
+also in LMS paper i don't think they analyze nodes getting 'full'; how performance degrades when density is too high... 
