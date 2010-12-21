@@ -3,7 +3,8 @@
 require 'fogpubsub.rb'
 require 'uds.rb'
 require 'lms.rb'
-require 'pp'
+require 'date'
+
 
 # -------------------------------------------------
 #           LMS layer experiments
@@ -28,65 +29,78 @@ world_height = 1000
 
 # experiments where we vary the number of nodes, hops, and
 # braodcast radius.
+
+log = File.open("log-#{DateTime.now.to_s}", 'w')
+log.write("Experiment,hops,nodes,broadcast,put recall, get recall\n")
+log.flush()
+i = 0
+results = []
 (1..2).each { |hops|
     [100,200,300].each{ |broadcast_radius|
         topology = UDS.new(world_width, world_height, broadcast_radius)
         universe = God.new(topology)
         (10..1000).step(10).each { |num_nodes| 
 
-            # initialize nodes in the universe with randomized subscriptions
-            # and a random buffer size between 1 and 20
-            (1..num_nodes).each{|id|
+            puts "-------------------------------------------------------------------------------------"
+            puts "Experiment: #{hops} hops, broadcast radius = #{broadcast_radius}, #{num_nodes} nodes."
+            puts "-------------------------------------------------------------------------------------"
+
+            # initialize nodes 
+            (0..num_nodes-1).each{|id|
                 x = rand(world_width)
                 y = rand(world_height)
                 fog_node = FogNode.new(id, routing=LMS, lambda_, hops, 
-                            buffer_size = rand(20), max_failures, x, y)
+                            buffer_size = 1000, max_failures, x, y)
                 universe.add(fog_node)
             }
 
-            # pick off some nodes to demonstrate put and get operations with 
-            n1 = universe.getNode(1)
-            n2 = universe.getNode(2)
-            n3 = universe.getNode(3)
-
-            # place ten messages into the system. why 10? does one put
-            # operation interact with others? only if we are exploring backoff
-            # behaviour, but since we have the system set up we might as well
-            # put a bunch of messages out there. 
-            n1.routing.put(tag = "t1", message = "n1 publishes with tag t1", replicas)
-            n2.routing.put(tag = "t2", message = "n2 publishes with tag t2", replicas)
-            n3.routing.put(tag = "t3", message = "n3 publishes with tag t3", replicas)
-            n1.routing.put(tag = "t4", message = "n1 publishes with tag t4", replicas)
-            n2.routing.put(tag = "t5", message = "n2 publishes with tag t5", replicas)
-            n3.routing.put(tag = "t6", message = "n3 publishes with tag t6", replicas)
-            n1.routing.put(tag = "t7", message = "n1 publishes with tag t7", replicas)
-            n2.routing.put(tag = "t8", message = "n2 publishes with tag t8", replicas)
-            n3.routing.put(tag = "t9", message = "n3 publishes with tag t9", replicas)
-            n1.routing.put(tag = "t10", message = "n1 publishes with tag t10", replicas)
-
-            # get some new nodes and do some querying
-            n4 = universe.getNode(4)
-            n5 = universe.getNode(5)
-            n6 = universe.getNode(6)
+            # put and get 1000 messages
+            put_recall_sum = 0.0
+            stored = []
+            (1..1000).each {
+                key = rand.hash.to_s
+                node_id = rand(num_nodes)
+                node = universe.getNode(node_id)
+                recall, stats = node.routing.put(tag = key, message = "djksjaljd", replicas)
+                put_recall_sum += recall
+                # only add a key to the list of stored items if it didn't completely fail.
+                stored.push(key) unless recall == 0
+            }
+            put_recall_avg = put_recall_sum/1000.0
+            puts "Put recall (avg/1000) #{put_recall_avg}"
 
             # query for each of the items - 'managed' get will repeat the get
             # request until it succeeds or some max threshold is hit. 
-            n4.routing.managedGet("t0") 
-            n5.routing.managedGet("t2")
-            n6.routing.managedGet("t3")
-            n4.routing.managedGet("t4") 
-            n5.routing.managedGet("t5")
-            n6.routing.managedGet("t6")
-            n4.routing.managedGet("t7") 
-            n5.routing.managedGet("t8")
-            n6.routing.managedGet("t9")
-            n4.routing.managedGet("t10") 
+            get_recall_sum = 0.0
+            (1..1000).each {
+                key = stored[rand(stored.length)]
+                node_id = rand(num_nodes)
+                node = universe.getNode(node_id)
+                item, recall = node.routing.managedGet(key) 
+                get_recall_sum += recall
+            }
+            get_recall_avg = get_recall_sum/1000.0
+            puts "Get recall (avg/1000) #{get_recall_avg}"
+
+            results[i] = {'nodes' => num_nodes, 'hops' => hops, 
+                            'broadcast_radius' => broadcast_radius,
+                            'put_recall' => put_recall_avg,
+                            'get_recall' => get_recall_avg }
+    
             
-            exit!
+            log.write("#{i},#{hops},#{num_nodes},#{broadcast_radius},#{put_recall_avg}, #{get_recall_avg}\n")
+            log.flush()
+            i += 1
+
+            puts "-------------------------------------------------------------------------------------"
+            puts "\n"
 
         }
     }   
 }
+
+
+
 
 exit!
 
