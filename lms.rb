@@ -105,43 +105,50 @@ class LMS
   
   def put(key, item, replicas)
     initiator = @node.realID
-    successes = 0
+    successes = 0.0
+    stats = {}
     (1..replicas).each {|r| 
       hash = computeHash(key + @hash_functions[rand(@hash_functions.length)].to_s)
-      puts "placing replica #{r}"
       walk_length = rand(50) + 10
-      puts "initial walk_length: #{walk_length}"
       path = []
       probe = PUTProbe.new(item, initiator, hash, walk_length, path, @max_failures)
       success = false
       give_up = false
       while not success and not give_up
         last_node, probe = random_walk(probe)
-        probe.pop_last() #prevents adding id to path twice
+        #prevent adding id to path twice        
+        probe.pop_last() 
         node = last_node.getRouting().deterministic_walk(probe)
       
-        if node.bufferFull? or (node.containsKey?(key) and node.containsData?(item)) or node.distance(@node.x, @node.y) > item.radius
+        if node.bufferFull? or (node.containsKey?(key) and node.containsData?(item)) 
           probe.fail()
           if probe.getFailures >= @max_failures
             give_up = true
-            puts "giving up on this replica, too many failures..."
           else
             probe.setLength(walk_length * 2)
             probe.clearPath()
+            next
           end        
         else
-          #everything is good, lets add the item to the buffer
           success = true
-          successes += 1
+          successes += 1.0
           node.bufferAdd(key, item)
-          puts "Replica #{r} from #{initiator} with key '#{key}' was stored at" \
-               + " node #{node.realID.to_s} with #{probe.getFailures} failures"
-          puts "Storage Path: " + probe.getStringPath()
         end
+
+        # log information about successes and failures, where the item was
+        # deposited, and the path it took. 
+        stats[r] = {'initiator' => initiator, 'failures' => probe.getFailures, 
+                    'success' => success, 'path' => probe.getStringPath, 
+                    'location'=> node.realID.to_s}
       end
     }
-    puts "#{successes} replicas were stored of Item #{key} (hash #{hash})\n"
-    puts "------------------------"
+
+    # recall = TP/TP+FN. in this case a FN (false negative) is when put()
+    # fails (when, ideally, it shouldn't). since the number of replicas
+    # requested is the total number of tries, TP+FN = replicas. the ideal
+    # recall for a put() would be 1.0. 
+    recall = successes/replicas
+    return recall, stats
   end
 
   def get(k)
@@ -164,14 +171,19 @@ class LMS
     # statistics on failures
     item_found = false
     tries = 0
-    until (item_found or tries == max)
+    until item_found or tries == max
         item_found, stats = get(k)
         cost = stats.getPath.length
         tries += 1
     end
-    # recall = TP/(TP+FN). 'FN' is when get() falsely returns nil. 
-    # in this case the loop stops at TP=1. 
-    recall = 1.0/(tries)
+    # recall = TP/(TP+FN). a 'FN' (false negative) is when get() falsely
+    # returns nil. in this case the loop stops at TP=1 and thus tries is equal
+    # to TP+FN. 
+    if item_found
+        recall = 1.0/(tries)
+    else
+        recall = 0
+    end
     return item_found, recall
   end
 end
