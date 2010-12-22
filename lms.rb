@@ -166,7 +166,7 @@ class LMS
       return item, probe
   end
 
-  def managedGet(k, max=1000)
+  def managedGet(k, max=100)
     # repeats the get request until it succeeds (or gets to 'max') and keeps
     # statistics on failures
     item_found = false

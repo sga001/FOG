@@ -39,7 +39,7 @@ results = []
     [100,200,300].each{ |broadcast_radius|
         topology = UDS.new(world_width, world_height, broadcast_radius)
         universe = God.new(topology)
-        (10..1000).step(10).each { |num_nodes| 
+        (100..5000).step(500).each { |num_nodes| 
 
             puts "-------------------------------------------------------------------------------------"
             puts "Experiment: #{hops} hops, broadcast radius = #{broadcast_radius}, #{num_nodes} nodes."
