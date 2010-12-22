@@ -63,7 +63,9 @@ results = []
             # put and get 1000 messages
             put_recall_sum = 0.0
             stored = []
-            (1..1000).each {
+            (1..1000).each {|m|
+                print "#{m}, "
+                STDOUT.flush
                 key = rand.hash.to_s
                 node_id = rand(num_nodes)
                 node = universe.getNode(node_id)
@@ -72,20 +74,25 @@ results = []
                 # only add a key to the list of stored items if it didn't completely fail.
                 stored.push(key) unless recall == 0
             }
+            puts ""
             put_recall_avg = put_recall_sum/1000.0
             puts "Put recall (avg/1000) #{put_recall_avg}"
 
             # query for each of the items - 'managed' get will repeat the get
             # request until it succeeds or some max threshold is hit. 
             get_recall_sum = 0.0
-            (1..1000).each {
+            (1..1000).each {|m|
+                print "#{m}, "
+                STDOUT.flush
                 key = stored[rand(stored.length)]
                 node_id = rand(num_nodes)
                 node = universe.getNode(node_id)
                 item, recall = node.routing.managedGet(key) 
                 get_recall_sum += recall
             }
+            puts "\n\n"
             get_recall_avg = get_recall_sum/1000.0
+            puts "Put recall (avg/1000) #{put_recall_avg}"
             puts "Get recall (avg/1000) #{get_recall_avg}"
 
             results[i] = {'nodes' => num_nodes, 'hops' => hops, 
