@@ -57,7 +57,7 @@ results = []
             # we can just save the neighbour determination for after all nodes
             # have been added. 
             puts "determining node neighbours..."
-            universe.updateAllNeighbours()
+            universe.updateAllNeighbors()
             puts "... done."
 
             # put and get 1000 messages
