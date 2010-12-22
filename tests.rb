@@ -53,6 +53,12 @@ results = []
                             buffer_size = 1000, max_failures, x, y)
                 universe.add(fog_node)
             }
+            # this function call makes use of the location of nearby nodes so
+            # we can just save the neighbour determination for after all nodes
+            # have been added. 
+            puts "determining node neighbours..."
+            universe.updateAllNeighbours()
+            puts "... done."
 
             # put and get 1000 messages
             put_recall_sum = 0.0

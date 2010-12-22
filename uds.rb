@@ -44,6 +44,10 @@ class God
   
   def add(node)
     @nodes[node.realID] = node
+  end
+
+  def addAndUpdate(node)
+    @nodes[node.realID] = node
     # update everyone's neighbours here, not just the new guy. 
     # XXX this should happen asynchronously. 
     updateAllNeighbors() 
