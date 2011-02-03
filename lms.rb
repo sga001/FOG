@@ -146,7 +146,9 @@ class LMS
     # recall = TP/TP+FN. in this case a FN (false negative) is when put()
     # fails (when, ideally, it shouldn't). since the number of replicas
     # requested is the total number of tries, TP+FN = replicas. the ideal
-    # recall for a put() would be 1.0. 
+    # recall for a put() would be 1.0.
+    stats['replicas'] = replicas
+    stats['successes'] = successes
     recall = successes/replicas
     return recall, stats
   end
@@ -171,20 +173,25 @@ class LMS
     # statistics on failures
     item_found = false
     tries = 0
+    stats = {}
     until item_found or tries == max
-        item_found, stats = get(k)
-        cost = stats.getPath.length
+        item_found, probe_data = get(k)
+        cost = probe_data.getPath.length
         tries += 1
     end
     # recall = TP/(TP+FN). a 'FN' (false negative) is when get() falsely
     # returns nil. in this case the loop stops at TP=1 and thus tries is equal
     # to TP+FN. 
     if item_found
-        recall = 1.0/(tries)
+      recall = 1.0/(tries)
+      stats["success"] = true
     else
-        recall = 0
+      recall = 0
+      stats["success"] = false
     end
-    return item_found, recall
+    stats["tries"] = tries
+    stats["max_tries"] = max
+    return item_found, recall, stats
   end
 end
 
