@@ -29,7 +29,6 @@ world_height = 1000
 
 # experiments where we vary the number of nodes, hops, and
 # braodcast radius.
-
 log = File.open("log-#{DateTime.now.to_s}", 'w')
 log.write("Experiment,hops,nodes,broadcast,put recall, get recall\n")
 log.flush()
@@ -39,6 +38,7 @@ results = []
     [100,200,300].each{ |broadcast_radius|
         topology = UDS.new(world_width, world_height, broadcast_radius)
         universe = God.new(topology)
+        universe.setNodeSettings(lambda_, max_failures, hops, update_frequency = 500, type=FogNode, routing=LMS, buffer_size=1000)
         (100..5000).step(500).each { |num_nodes| 
 
             puts "-------------------------------------------------------------------------------------"
@@ -46,13 +46,18 @@ results = []
             puts "-------------------------------------------------------------------------------------"
 
             # initialize nodes 
+            
             (0..num_nodes-1).each{|id|
-                x = rand(world_width)
-                y = rand(world_height)
-                fog_node = FogNode.new(id, routing=LMS, lambda_, hops, 
-                            buffer_size = 1000, max_failures, x, y)
-                universe.add(fog_node)
+                universe.step(join=100)
             }
+            
+            #(0..num_nodes-1).each{|id|
+            #    x = rand(world_width)
+            #    y = rand(world_height)
+            #    fog_node = FogNode.new(id, routing=LMS, lambda_, hops, 
+            #                buffer_size = 1000, max_failures, x, y)
+            #    universe.add(fog_node)
+            #}
             # this function call makes use of the location of nearby nodes so
             # we can just save the neighbour determination for after all nodes
             # have been added. 
@@ -63,32 +68,42 @@ results = []
             # put and get 1000 messages
             put_recall_sum = 0.0
             stored = []
-            (1..1000).each {|m|
+            (1..100).each {|m|
                 print "#{m}, "
                 STDOUT.flush
                 key = rand.hash.to_s
-                node_id = rand(num_nodes)
+                node_id = rand(universe.maxID())
                 node = universe.getNode(node_id)
+                while node == nil do
+                	node_id = rand(num_nodes)
+                	node = universe.getNode(node_id)
+                end
                 recall, stats = node.routing.put(tag = key, message = "djksjaljd", replicas)
                 put_recall_sum += recall
                 # only add a key to the list of stored items if it didn't completely fail.
                 stored.push(key) unless recall == 0
+                universe.step()
             }
             puts ""
-            put_recall_avg = put_recall_sum/1000.0
+            put_recall_avg = put_recall_sum/100.0
             puts "Put recall (avg/1000) #{put_recall_avg}"
 
             # query for each of the items - 'managed' get will repeat the get
             # request until it succeeds or some max threshold is hit. 
             get_recall_sum = 0.0
-            (1..1000).each {|m|
+            (1..100).each {|m|
                 print "#{m}, "
                 STDOUT.flush
                 key = stored[rand(stored.length)]
                 node_id = rand(num_nodes)
                 node = universe.getNode(node_id)
+                while node == nil do
+                	node_id = rand(num_nodes)
+                	node = universe.getNode(node_id)
+                end
                 item, recall = node.routing.managedGet(key) 
                 get_recall_sum += recall
+                universe.step()
             }
             puts "\n\n"
             get_recall_avg = get_recall_sum/1000.0
@@ -101,7 +116,7 @@ results = []
                             'get_recall' => get_recall_avg }
     
             
-            log.write("#{i},#{hops},#{num_nodes},#{broadcast_radius},#{put_recall_avg}, #{get_recall_avg}\n")
+            log.write("#{i},#{hops},#{num_nodes},#{broadcast_radius},#{put_recall_avg}, #{get_recall_avg}, #{universe.getTime()}\n")
             log.flush()
             i += 1
 

@@ -15,7 +15,7 @@ ideally we would split off a second process for each node which would periodical
 
 
 class FogNode
-  def initialize(nid, routing, lambda_, hops, buffer_size, max_failures, x, y, subscriptions=nil)
+  def initialize(nid, routing, lambda_, hops, buffer_size, max_failures, x, y, speed, subscriptions=nil)
     @nid = nid
     @x = x
     @y = y
@@ -30,12 +30,16 @@ class FogNode
     @neighbors = [] #-> FogNodes
     @new_messages = {}
     @cached_messages = {}
+	@speed = speed
   end
 
   def realID
     return @nid
   end
   
+  def speed
+  	return @speed
+  end
   
   def cache_messages()
     @new_messages.each{|tag, list|
