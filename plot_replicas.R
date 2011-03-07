@@ -1,8 +1,8 @@
 # run this by starting R (type R at the bash prompt)
 # then type source("plot.R") at the R prompt. 
 
-metadata <- read.csv("log-2011-02-02T21:09:32-05:00", nrows=3, header=0, sep=":")
-log <- read.csv("log-2011-02-02T21:09:32-05:00", skip=3)
+metadata <- read.csv("log-2011-02-02T21:09:32-05:00", nrows=8, header=0, sep=":")
+log <- read.csv("log-2011-02-02T21:09:32-05:00", skip=8)
 
 # start the PNG device driver to save the graph
 # png(filename="graphs/lms-recall2.png", height=400, width=600, bg="white")
