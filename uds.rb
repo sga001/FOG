@@ -19,7 +19,19 @@ class God
     # y() methods. 
     @nodes = {}
     # god keeps time - make a note when the universe was created. 
-    @clock = Time.now 
+    @time = 0 
+    @maxID = 0
+    @moveQueue = {}
+  end
+	
+  def setNodeSettings(lbda, max_failures, hops, update_frequency = 50, type=FogNode, routing=LMS, buffer_size=1000)
+  	@nodeType = type
+  	@nodeRouting = routing
+  	@nodeBufferSize = buffer_size
+  	@nodeMaxFailures = max_failures
+  	@nodeHops = hops
+  	@nodeLambda_ = lbda
+  	@nodeUpdateFrequency = update_frequency
   end
 
   def updateAllNeighbors()
@@ -42,6 +54,13 @@ class God
     return @nodes[nid]
   end
   
+  def addNode(x = rand(@topology.width), y = rand(@topology.height), speed = 5)
+  	
+  	node = @nodeType.new(@maxID, @nodeRouting, @nodeLambda_, @nodeHops, @NodeBufferSize, @nodeMaxFailures, x, y, speed=speed)
+  	@nodes[@maxID] = node
+  	@maxID+=1
+  end
+  
   def add(node)
     @nodes[node.realID] = node
   end
@@ -54,7 +73,7 @@ class God
   end
  
   def remove(nid)
-    @nodes.delete(nid)  
+    return @nodes.delete(nid)  
   end
   
   def remove_all()
@@ -73,6 +92,87 @@ class God
   
   def location(nid)
     return [@nodes[nid].x, @nodes[nid].y]
+  end
+  
+  def getTime()
+  	return @time
+  end
+  
+  def maxID()
+  	return @maxID
+  end
+
+=begin
+	Random Move: Uses Random Waypoint Model
+=end 
+
+  def discrete_move(nid) 
+  	deltaX = @moveQueue[nid]['x'] - @nodes[nid].x
+  	deltaY = @moveQueue[nid]['y'] - @nodes[nid].y
+  	mx = deltaX
+  	my = deltaY
+  	if deltaX.abs > @nodes[nid].speed
+  		mx = @nodes[nid].speed * (deltaX/(deltaX.abs))
+  	end
+  	
+  	if deltaY.abs > @nodes[nid].speed
+  		my = @nodes[nid].speed * (deltaY/(deltaY.abs))
+  	end
+  	
+  	moveRel(nid, mx, my)
+  	
+  	if @nodes[nid].x == @moveQueue[nid]['x'] and @nodes[nid].y == @moveQueue[nid]['y']
+  		@moveQueue.delete(nid)
+  	end
+  end
+   
+  def add_moveQueue(nid)
+	xdest = rand(@topology.width)
+	ydest = rand(@topology.height)
+  	@moveQueue[nid] = {"nid"=> nid, "x"=>xdest, "y"=>ydest}
+  	discrete_move(nid)
+  end  
+  
+=begin 
+	Join is an absolute probability (i.e. probability that a new node will join). 
+	Move and Drop are per node probabilities (i.e. probability that any node
+	in the universe will move or be dropped) Probabilities are in the range [0, 1000]
+=end 
+  def step(join = 5, drop= 1, move = 50)
+	@moveQueue.each{|nid|
+		if nid != nil
+			discrete_move(nid[0])
+		end
+	}
+	
+	if drop != 0
+		@nodes.each{|n|
+			prob_drop = rand(1000)
+			if prob_drop < drop
+				@moveQueue.delete(n[0])
+				@nodes.delete(n[0])
+			end
+		}
+	end
+  	
+  	prob_join = rand(1000)
+  	if prob_join < join
+  		addNode(speed = rand(5))
+  	end
+  	
+  	if move != 0 
+	  	@nodes.each{|n|
+	  		prob_move = rand(1000)
+	  		if prob_move < move
+	  			add_moveQueue(n[0])
+		  	end
+	  	}
+	end
+  	
+  	@time += 1
+  	if @time % @nodeUpdateFrequency == 0
+  		updateAllNeighbors()
+  	end
   end
 end
 
