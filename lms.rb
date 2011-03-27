@@ -11,9 +11,26 @@ LMS handles replica determination, possibly based on dynamic criteria passed in
 from individual publishing nodes.  
 =end
 
-class LMS
+module LMSEvents
+	def put
+	end
+
+	def get
+	end
+
+end
+
+=begin
+class Node
+	include LMS
+end
+Node.setLMSParams(...)
+n = Node.new
+=end
+
+module LMS
   # instatiated for each node. 
-  def initialize(node, hops, lambda_, max_failures)
+  def LMSSetup(node, hops, lambda_, max_failures)
     @hops, @lambda, @max_failures = hops, lambda_, max_failures 
 
     # keep track of the parent node. (the externally facing one) 

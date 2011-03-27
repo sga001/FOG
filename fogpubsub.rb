@@ -15,32 +15,31 @@ ideally we would split off a second process for each node which would periodical
 
 
 class FogNode
-  def initialize(nid, routing, lambda_, hops, buffer_size, max_failures, x, y, speed, subscriptions=nil)
-    @nid = nid
-    @x = x
-    @y = y
-    @subscriptions = subscriptions || []
-    @max_buffer = buffer_size ||= rand(20)
-    @current_buffer = 0
-    @buffer = {}
-    @digest = BloomFilter.new(512, 10) # 512 bits, 10 hash functions
-    # expects routing interface to implement put, get
-    @routing = routing.new(self, hops, lambda_, max_failures) 
-    # initialize neighbor list
-    @neighbors = [] #-> FogNodes
-    @new_messages = {}
-    @cached_messages = {}
-	@speed = speed
-  end
+
+	@@id = 0
+
+	def initialize(x, y)
+		@nid = @@id
+		@@id += 1
+		@x = x
+		@y = y
+		@max_buffer = rand(20) +10
+		@current_buffer = 0
+		@buffer = {}
+		@digest = BloomFilter.new(512, 10) # 512 bits, 10 hash functions
+		# expects routing interface to implement put, get
+		#@routing = routing.new(self, hops, lambda_, max_failures) 
+		# initialize neighbor list
+		@neighbors = [] #-> FogNodes
+		@new_messages = {}
+		@cached_messages = {}
+		#@speed = speed
+	end
 
   def realID
     return @nid
   end
-  
-  def speed
-  	return @speed
-  end
-  
+ 
   def cache_messages()
     @new_messages.each{|tag, list|
       l = []
@@ -62,7 +61,6 @@ class FogNode
 
     return list
   end
-  
   
   #these are the 1 hop neighbors... they are FogNodes!!!  
   def updateNeighbors (list)
