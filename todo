@@ -1,3 +1,9 @@
+
+best way to configure LMS global settings. 
+re-think recall and precision - what is our metric
+revisit all the possible variables (replicas, max failures, managedGet, etc.)
+
+
 ### experiment
 
 store successes, failures, 

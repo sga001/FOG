@@ -7,12 +7,12 @@
 =end
 
 module Comms
-	# defines a simulated communications ability for the nodes. 
-	# needs to talk to the one simulator, and every node. 
+	# defines a simulated communications ability for the nodes.
+	# needs to talk to the one simulator, and every node.
 	# usage: in an experiment, once a simulator s is defined:
 	# class Node
 	#	extend Comms
-	# end 
+	# end
 	# # commSetup is a class method
 	# Node.commSetup(s)
 	# n = Node.new
@@ -60,12 +60,49 @@ module UDSTopology
 		# move nodeID to a specific location specified by a tuple (in this
 		# case, (x,y), ensuring the location remains within the bounds of the
 		# defined topology. 	
-		@occupied[@nodes[nodeID].x][@nodes[nodeID.y]] = false
+		oldX = @nodes[nodeID].x
+		oldY = @nodes[nodeID].y
 		newX = coords[0] % @width
 		newY = coords[1] % @height
-		@nodes[nodeID].x = newX
-		@nodes[nodeID].y = newY
-		@occupied[newX][newY] = true
+		if @occupied[newX][newY]
+			return false
+		else
+			@occupied[oldX][oldY] = false
+			@nodes[nodeID].x = newX
+			@nodes[nodeID].y = newY
+			@occupied[newX][newY] = true
+		end
+		return true
+	end
+
+	def addNode()
+		# pick randomly from the set of empty locations. alternatively, we
+		# could pick a random spot until we find one that's unoccupied. 
+		# XXX arguably, nodes should enter from the edges of the space only.
+		# however, there are various reasons why this might not be the case--
+		# getting out of a car, turning on a device, etc. 
+		available = emptySpots()
+		if available.empty?
+			return false
+		else
+			loc = available[rand(available.length)]
+			@occupied[loc[0]][loc[1]] = true
+			n = Node.new(loc[0], loc[1])
+			@nodes[n.nid] = n
+		end
+		return n
+	end
+
+	def removeNode(nodeID)
+		# delete the node and update its location to un-occupied. return true
+		# for success, false for failure
+		n = @nodes[nodeID]
+		unless n == nil 
+			@occupied[n.x][n.y] = false
+			@nodes.delete(nodeID)		
+			return true
+		end
+		return false
 	end
 
 	def validOneStepLocations(nodeID)
@@ -79,7 +116,7 @@ module UDSTopology
 		x = @nodes[nodeID].x
 		y = @nodes[nodeID].y
 		(-1,0,1).each{|relX|
-			{-1,0,1).each{|relY|
+			(-1,0,1).each{|relY|
 				valid.push([x+relX, y+relY]) unless @occupied[x+relX][y+relY]
 			}
 		} return valid
@@ -117,6 +154,7 @@ class Simulator
 							'advanceState' => :advanceState,
 						} # {eventName => :functionReference, ...}
 	end	
+	attr_accessor :time
 
 	def calculatePhysicalNbrs(nodeID)
 		# iterate over all nodes and if the distance is within the broadcast
@@ -176,28 +214,27 @@ class Simulator
 	###############################################################
 	private 
 
+	def getNode(nodeID)
+		return @nodes[nodeID]
+	end
+
 	def stepNodeRandom(nodeID)
-		# modes the node one step in a random direction
+		# modes the node one step in a random direction. return true unless
+		# there are no open neighbouring positions, in which case returns
+		# false. 
 		valid = validOneStepLocations()
-		new = valid[rand(valid.length)]
-		moveNode(nodeID, [new[0], new[1]]	
+		if valid.empty?
+			return false
+		else
+			new = valid[rand(valid.length)]
+			moveNode(nodeID, [new[0], new[1]]	
+		end
+		return true
 	end
 
 	def stepNodeWithPurpose()
 		# modes the node one step in a semi-random fashion but with an overall
 		# long term destination (not sure best way to do this quite yet)
-	end
-
-	def addNode()
-		# pick randomly from the set of empty locations. alternatively, we
-		# could pick a random spot until we find one that's unoccupied. 
-		available = emptySpots()
-		loc = available[rand(available.length)]
-		@occupied[loc[0]][loc[1]] = true
-		n = Node.new(loc[0], loc[1])
-		@nodes[n.nid] = n
-		return n
-		
 	end
 
 	def addNodes(num)
@@ -206,23 +243,42 @@ class Simulator
 		}
 	end
 
-	def getNode(nodeID)
-		return @nodes[nodeID]
+	def removeNodes(num)
+		# delete one or more nodes selected at random
+		(0..num).times {
+			nid = @nodes.keys()[rand(@nodes.length)]
+			removeNode(nid)	
+		}
 	end
 
-	def removeNode(nodeID)
-		
+	def moveNodes(num)
+		alreadyMoved = []
+		while num > 0 {
+			nid = @nodes.keys()[rand(@nodes.length)]
+			unless alreadyMoved.include? nid
+				stepNodeRandom(nid) 
+				num -= 1
+			end
+		}
 	end
 
-	def removeNodes(nodeID)
-	end
 
-	def getTime()
-	end
-
-	def advanceState()
+	def advanceState(numNew, numKill, percentMove)
 		# advances the state of the system by one slice of time. the
-		# system state consists of positions, new nodes, nodes dying out, 
+		# system state consists of current nodes' positions, new nodes being
+		# added, and existing nodes being killed off. 
+		
+		# note: if a node is going to be killed there's no point moving it. if
+		# a node is going to be added there's also no point moving it (since
+		# its initial location is random anyway). main design decision is
+		# whether to add new nodes/kill off old nodes before or after the
+		# existing nodes move. since the movement is random, i believe these
+		# are equivalent-- that is, it doesn't matter. 
+
+		removeNodes(numKill) unless numKill == 0
+		addNodes(numNew) unless numNew == 0
+		numMove = (@nodes.length * percentMove).round 
+		moveNodes(numMove) unless numMove == 0
 	end
 		
 
@@ -234,21 +290,20 @@ sim = Simulator.new
 # methods and instance variables, including width and height, which we can then
 # initialize by calling the dimensions() method, also included as part of the
 # UDSTopology module.  
+sim.include LMSEvents
 sim.include UDSTopology
 sim.dimensions(width, height)
-sim.include LMSEvents
 
 class Node
 	extend Comms
+	include LMS
 end 
 Node.commSetup(sim)
+Node.LMSSetup(...)
 
-(1..aLot).times {
-	theSim.addNode()
-}
-	#we only ever interact with the experiment via the simulator
-	return theSim
-end
+sim.event('addNodes', 1000)
+sim.event('advanceState', numAdd=10, numKill=20, percentMove=50)
+sim.event('put', ['events', 'the bon jovi concert was good', 50])
 
 
 
