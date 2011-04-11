@@ -1,8 +1,34 @@
 
-best way to configure LMS global settings. 
-re-think recall and precision - what is our metric
-revisit all the possible variables (replicas, max failures, managedGet, etc.)
+D - fix bug in local_minima
+D - figure out if we need to pass around nodes or node IDs. currntly it's nodes. 
+D - check for occurences of getRouting() 
+D - best way to configure LMS global settings. 
+D remove x,y from Node class
+D overwrite Node initialize() function when LMS is included, but in such a way
+  that if multiple protocols are included they don't overwrite each other. 
+* what if nodes have moved between identifying a local minima and sending probe
+  information back? except, we never send a probe back to the originator
+  (except implicitly).  
+* in PUT, ARE we actually adding self.nid to path twice?
+* distance calculation must check if sqrt value is within size of topology. 
 
+D adding nodes to specific location
+* implement sim.clear
+* more tests
+
+re-think recall and precision - what is our metric
+
+we can think of the node.deterministic_walk() method like a way of
+communicating between nodes, but this happens outside the simulator event
+structure, which means neighbours will never change during a PUT or GET event,
+which is unrealistic. we might want to add some fuzzyness to this or change it
+so that communication between nodes happens via the event infrastructure.  
+
+in lms PUT(), the current node shouldn't be able to check the buffer of the
+target node-- that logic should be in the way the probe communicates. 
+
+
+* adaptive protocol - adjust replicas as needed. 
 
 ### experiment
 
@@ -10,9 +36,9 @@ store successes, failures,
 
 ### fixes
 
-* UDS should be a torus not a finite universe-- but since we're not moving
+D UDS should be a torus not a finite universe-- but since we're not moving
   any nodes right now it doesn't affect our results. 
-* LMS get should have multiple probes, not at the fog layer. 
+D LMS get should have multiple probes, not at the fog layer. 
 * fog node bufferAdd() should not use a list for items w say key
 * if fog node is going to have a cache then when it executes a query it
   should check its own cache first.  
@@ -21,7 +47,6 @@ store successes, failures,
 
 * lifetime and radius at fog layer
 * time framework
-* adaptive protocol - adjust replicas as needed. 
 * digests, subscriptions
 * when a new guy is added, he should get his own neighbours, but then other
   nodes' neighbours should update asynchronously. 

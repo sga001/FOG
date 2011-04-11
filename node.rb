@@ -6,35 +6,49 @@ require 'pp'
 =end
 
 class Node
-
 	# create a global id namespace for convenience tracking. might be
 	# problematic if we have a TON of nodes, and note that IDs from nodes that
 	# get killed never get re-used. 
 	@@id = 0
+	@@broadcastRadius = nil
+	@@bufferMin = nil
+	@@bufferRange = nil
 
-	def initialize(x, y)
+	def self.setup(broadcastRange, broadcastMin, bufferRange, bufferMin)
+		@@broadcastRange = broadcastRadius
+		@@braodcastMin = broadcastMin
+		@@bufferMin = bufferMin
+		@@bufferRange = bufferRange
+	end
+
+	def initialize
+		puts "calling initialize of Node"
+		# instantiate an ID from the global node ID space
 		@nid = @@id
 		@@id += 1
-		@x = x
-		@y = y
-		@max_buffer = rand(20) +10
+
+		@max_buffer = rand(@@bufferRange) + @@bufferMin
+		@broadcastRadius = rand(@@broadcastRange) + @@broadcastMin
 		@current_buffer = 0
 		@buffer = {}
+		
 		@digest = BloomFilter.new(512, 10) # 512 bits, 10 hash functions
-		@neighbors = [] #-> FogNodes
+		@neighbors = [] 
 
 		# not exactly sure what we use these for.. something to do with
 		# subscriptions instead of LMS items?
 		@new_messages = {}
 		@cached_messages = {}
 
-		# deprecated... for now. 
-		#@routing = routing.new(self, hops, lambda_, max_failures) 
-		#@speed = speed
+		# this calls the initialize method of any included modules. magic
+		# happiness! (note that included modules get treated like
+		# *super*classes, which is why you don't call super from the module's
+		# initialize() method, even though we are including the module IN the
+		# class). 
+		super
 	end
-	attr_accessor :nid, :x, :y, :neighbors
+	attr_accessor :nid, :neighbors, :broadcastRadius
 
-    #these are the 1 hop neighbors... they are FogNodes!!!  
 	def updateNeighbors (list)
 		# the neighbors being passed in are physical neihgbors. neighbors in the
 		# routing overlay may be different.  
@@ -42,7 +56,7 @@ class Node
 	end
 
 	def to_s
-		return "[" + @x.to_s + "," + @y.to_s + "]"
+		return "Node#{@nid}"
 	end
 
 	# Physical Storage Methods

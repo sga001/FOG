@@ -18,33 +18,45 @@ module Comms
 	# n = Node.new
 	# n.getNeighbors()
 
-	def commSetup(s)
-		@sim = s
-		include CommsMethods
+	def self.setup(s)
+		@@sim = s
 	end
-end
+	attr_accessor :sim
 
-module CommsMethods
-	# defines methods that Nodes will use to communicate with the outside
-	# world. This module gets included by the Comms module, so these become
-	# instance methods. 
-	def getNeighbors()
-		@sim.calculateNbrs(@ID)
+	def self.included(base)
+		base.class_eval {
+			# we want all nodes to share access to the same simulator, so sim
+			# is a true class variable. 
+			@@sim = Comms.sim
+		}
 	end
+
+	# instance method that Nodes will use to communicate with the outside
+	# world (simulator). 
+	def getNeighbors()
+		@@sim.getPhysicalNbrs(@ID)
+	end
+
 end
 
 module UDSTopology
 	# defines behaviour specific to a uniform disc topology (2D euclidean
 	# space with wrap-around behaviour). Is also demonstrative of the methods
 	# that another topology module would need to define to function with the
-	# Simulator 
+	# Simulator. Pay attention to return values, they will be expected by the
+	# simulator. 
 
-	def dimensions(width, height)
+	def self.setup(width, height)
 		# initialization function
 		@width = width
 		@height = height
-		# keep track of which locations are occupied. optimization.  
-		@occupied = Array.new(width) {Array.new(height)}
+		# keep track of which locations are occupied. 
+		@occupied = Hash.new
+		(0..@width-1).each{|x|
+			(0..@height-1).each{|y|
+				@occupied[[x,y]] = false
+			}
+		}
 	end
 	
 	def distance(n1, n2)
@@ -64,32 +76,54 @@ module UDSTopology
 		oldY = @nodes[nodeID].y
 		newX = coords[0] % @width
 		newY = coords[1] % @height
-		if @occupied[newX][newY]
-			return false
+		if @occupied[[newX,newY]]
+			raise "Cannot move node to occupied location"
 		else
-			@occupied[oldX][oldY] = false
+			@occupied[[oldX,oldY]] = false
 			@nodes[nodeID].x = newX
 			@nodes[nodeID].y = newY
-			@occupied[newX][newY] = true
+			@occupied[[newX,newY]] = true
 		end
 		return true
 	end
 
+	def validLocation(loc)
+		x = loc[0]
+		y = loc[1]
+		if x < 0 or x > @width or y < 0 or y > @height
+			return false
+		else
+			return true
+		end
+	end
+
 	def addNode()
 		# pick randomly from the set of empty locations. alternatively, we
-		# could pick a random spot until we find one that's unoccupied. 
-		# XXX arguably, nodes should enter from the edges of the space only.
-		# however, there are various reasons why this might not be the case--
-		# getting out of a car, turning on a device, etc. 
+		# could pick a random spot until we find one that's unoccupied.  One
+		# might argue that nodes should preferentially enter from the edges of
+		# the space only.  however, there are various reasons why this might
+		# not be the case-- getting out of a car, turning on a device, etc. 
 		available = emptySpots()
 		if available.empty?
 			return false
 		else
 			loc = available[rand(available.length)]
-			@occupied[loc[0]][loc[1]] = true
-			n = Node.new(loc[0], loc[1])
-			@nodes[n.nid] = n
+			return addNodeAtLocation(*loc)
 		end
+	end
+
+	def addNodeAtLocation(x,y)
+		loc = [x,y]
+		raise "Location Occupied" if @occupied[loc]
+		raise "Location out of bounds" if !validLocation(loc)
+	   	@occupied[loc] = true
+		n = Node.new
+		# singleton methods. hawt. 
+		def n.x; return loc[0] end
+		def n.y; return loc[1] end
+		def n.x=(newX); n.x=newX; end
+		def n.y=(newY); n.y=newY; end
+		@nodes[n.nid] = n
 		return n
 	end
 
@@ -98,7 +132,7 @@ module UDSTopology
 		# for success, false for failure
 		n = @nodes[nodeID]
 		unless n == nil 
-			@occupied[n.x][n.y] = false
+			@occupied[[n.x,n.y]] = false
 			@nodes.delete(nodeID)		
 			return true
 		end
@@ -115,18 +149,19 @@ module UDSTopology
 		valid = []
 		x = @nodes[nodeID].x
 		y = @nodes[nodeID].y
-		(-1,0,1).each{|relX|
-			(-1,0,1).each{|relY|
-				valid.push([x+relX, y+relY]) unless @occupied[x+relX][y+relY]
+		[-1,0,1].each{|relX|
+			[-1,0,1].each{|relY|
+				valid.push([x+relX, y+relY]) unless @occupied[[x+relX,y+relY]]
 			}
-		} return valid
+		} 
+		return valid
 	end
 
 	def emptySpots()
+		# returns an array of [x,y] coords which are empty (unoccupied)
 		empty = []
 		# fancy-pants ruby block notation... <3.  
-		@occupied.each_index{|x| @occupied.each_index{|y| empty << [x,y] if 
-							@occupied[x][y] == false} }
+		@occupied.each{|loc, occupied| empty << loc if occupied == false}
 		return empty
 	end
 end
@@ -153,58 +188,38 @@ class Simulator
 							'removeNodes' => :removeNodes,
 							'advanceState' => :advanceState,
 						} # {eventName => :functionReference, ...}
+
 	end	
 	attr_accessor :time
 
-	def calculatePhysicalNbrs(nodeID)
+	def getPhysicalNbrs(nodeID)
 		# iterate over all nodes and if the distance is within the broadcast
-		# radius of the node, then it is a physical neighbour. O(n).
+		# radius of the node, then it is a physical neighbour. O(n). Returns a
+		# list of node objects. 
 		thisNode = @nodes[nodeID]
 		nbrs = []
-		@nodes.each{|otherID, otherNode|{
+		@nodes.values.each{|otherNode|
 			if ((thisNode != otherNode) and 
 				distance(thisNode, otherNode) < thisNode.broadcastRadius)
-				nbrs.push(otherID)
+				nbrs.push(otherNode)
 			end
 		}
 		return nbrs
 	end 
-
-	def calculateNeighbors(nodeID)
-		# calculate the neighbors of a node given the number of hops it has
-		# indicated as its local neighborhood.  
-		nbrs = calculatePhysicalNeighbors(nodeID) 
-		if @nodes[nodeID].hops = 1 then return nbrs
-
-		# keep track of which neighbours we've already calculated so we don't
-		# duplicate efforts. 
-		alreadyCalculated = []
-		(1..@nodes[nodeID].hops).times {
-			moreNbrs = nbrs
-			nbrs.each{|nbr|
-				unless alreadyCalculated.find(nbr)  
-					moreNbrs += calculatePhysicalNeighbors(nbr)
-					alreadyCalculated.push(nbr) 
-				end
-			} 
-			nbrs += moreNbrs
-		}
-		return nbrs.uniq
-	end
 
 	def registerEvent(eventName)
 		@supportedEvents[eventName] = :eventName
 	end
 
 
-	def event(eventName, eventArgs)
+	def event(eventName, *eventArgs)
 		# everything we ask the sim to do can get passed through this method,
 		# which will log the actions, increase the time step, and do other
 		# management tasks as needed. 
 			
 		@time += 1
-		send(@supportedEvents[eventName], eventArgs) unless not	
-			supportedEvents.index(eventName)  
+		send(@supportedEvents[eventName], *eventArgs) if 
+			supportedEvents.include? eventName 
 
 		# do some fancy logging here?
 	end
@@ -227,7 +242,7 @@ class Simulator
 			return false
 		else
 			new = valid[rand(valid.length)]
-			moveNode(nodeID, [new[0], new[1]]	
+			moveNode(nodeID, [new[0], new[1]])
 		end
 		return true
 	end
@@ -239,7 +254,10 @@ class Simulator
 
 	def addNodes(num)
 		(1..num).times{
-			addNode()
+			# adds the node to the topology
+			n = addNode()
+			# now call any protocol-specific init functions that need calling
+			nodeInit(n)
 		}
 	end
 
@@ -253,13 +271,13 @@ class Simulator
 
 	def moveNodes(num)
 		alreadyMoved = []
-		while num > 0 {
+		while num > 0 do
 			nid = @nodes.keys()[rand(@nodes.length)]
 			unless alreadyMoved.include? nid
 				stepNodeRandom(nid) 
 				num -= 1
 			end
-		}
+		end
 	end
 
 
@@ -283,27 +301,6 @@ class Simulator
 		
 
 end
-
-############ experiment ###########
-sim = Simulator.new
-# by including the UDSTopology module we build into the simulator several new
-# methods and instance variables, including width and height, which we can then
-# initialize by calling the dimensions() method, also included as part of the
-# UDSTopology module.  
-sim.include LMSEvents
-sim.include UDSTopology
-sim.dimensions(width, height)
-
-class Node
-	extend Comms
-	include LMS
-end 
-Node.commSetup(sim)
-Node.LMSSetup(...)
-
-sim.event('addNodes', 1000)
-sim.event('advanceState', numAdd=10, numKill=20, percentMove=50)
-sim.event('put', ['events', 'the bon jovi concert was good', 50])
 
 
 

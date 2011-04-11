@@ -1,5 +1,4 @@
 require 'digest/sha1'
-require 'uds.rb'
 require 'pp'
 
 =begin
@@ -17,30 +16,30 @@ module LMSEvents
 	# the include call will invoke self.included() and register the events with
 	# the simulator. 
 	
-	def self.included(baseClass)
-			registerEvent('LMSPut')
-			registerEvent('LMSGet')
+	def self.included(obj)
+			supported = obj.instance_variable_get(:@supportedEvents)
+			supported['LMSPut'] = :LMSPut
+			supported['LMSGet'] = :LMSGet
+			obj.instance_variable_set(:@supportedEvents, supported)
 	end
 
 	def LMSPut(nodeID, tag, message, replicas)
 		@nodes[nodeID].put(tag, message, replicas)
 	end
 
-	def LMSGet
+	def LMSGet(tag)
+		@nodes[nodeID].get(tag)
 	end
-
 end
-
-=begin
-class Node
-	include LMS
-end
-Node.LMSSetup(node, hops)
-n = Node.new
-=end
 
 module LMS
-	def LMSSetup(hops, lambda_, max_failures)
+	@@hops = nil
+	@@lambda = nil
+	@@max_failures = nil
+	@@randomWalkRange = nil
+	@@randomWalkMin = nil
+
+	def self.setup(hops, lambda_, max_failures, randWalkRange, randWalkMin)
 		# set up some class-level variables to specify parameters of this LMS
 		# 'install'. call this after including the module to initialize.  
 		
@@ -53,9 +52,25 @@ module LMS
 		
 		# max allowable failures in trying to store an item
 		@@max_failures = max_failures 
-		@hashID= computeHash(@nid)
+
+		# random walk lengths - range and start value
+		@@randomWalkRange = randWalkRange
+		@@randomWalkMin = randWalkMin
 
 		@@hash_functions = [1, 2, 3, 4, 5]
+	end
+	
+	# this will get called via super from the including class' initialize
+	# method (by design)
+	def initialize()
+		puts "calling initialize of LMS"
+		@hashID= computeHash(@nid)
+		super
+	end
+	attr_accessor :hashID
+
+	def randWalkLength()
+		return rand(@@randomWalkRange) + @@randomWalkMin
 	end
 
 	def put(key, item, replicas)
@@ -63,9 +78,9 @@ module LMS
 		successes = 0.0
 		stats = {}
 		(1..replicas).each {|r| 
-			hash_string = @@hash_functions[rand(@hash_functions.length)].to_s
+			hash_string = @@hash_functions[rand(@@hash_functions.length)].to_s
 			hash = computeHash(key + hash_string)
-			walk_length = rand(50) + 10
+			walk_length = randWalkLength()
 			path = []
 			probe = PUTProbe.new(item, initiator, hash, walk_length, path, 
 								 @@max_failures)
@@ -75,7 +90,7 @@ module LMS
 				last_node, probe = random_walk(probe)
 				#prevent adding id to path twice        
 				probe.pop_last() 
-				node = last_node.getRouting().deterministic_walk(probe)
+				node = last_node.deterministic_walk(probe)
 
 				if node.bufferFull? or (node.containsKey?(key) and 
 										node.containsData?(item)) 
@@ -114,98 +129,19 @@ module LMS
 	end
 
 	def get(k)
-		walk_length = rand(10) + 5
+		walk_length = randWalkLength()
 		path = []
 		initiator = @nid
 		hash = computeHash(k + @@hash_functions[rand(@@hash_functions.length)].to_s)
 		probe = Probe.new(initiator, hash, walk_length, path)
 		last_node, probe = random_walk(probe)
 		probe.pop_last() #prevents adding id to path twice
-		found_minimum = last_node.getRouting().deterministic_walk(probe)
+		found_minimum = last_node.deterministic_walk(probe)
 		# note that 'item' will be null if this LM does not have the item. 
 		item = found_minimum.retrieve(k)
 		# return probe so can print stats about path. 
 		return item, probe
 	end
-
-	def computeHash(nid)
-		d = Digest::SHA1.hexdigest(nid.to_s).hex
-		return d.modulo(2**@@lambda)
-	end
-
-	def hashID
-		return @hashID
-	end
-
-	def distance(hash2)
-		# computes distance between the current node, and the given key 
-		w1 = (@hashID - hash2).modulo(2**@@lambda)
-		w2 = (hash2 - @hashID).modulo(2**@@lambda)
-		if w1 < w2
-			return w1
-		else
-			return w2
-		end
-	end
-
-	def neighborhood
-		neighbors = @node.getNeighbors()
-		h_hop_neighbors = neighbors #list of 1-hop neighbors, now we need to add all h-hop neighbors
-
-		(1..@hops).each{
-			neighbors.each{|node|
-			h_hop_neighbors += node.getNeighbors()  
-		}
-		h_hop_neighbors = h_hop_neighbors.uniq #remove duplicates
-		h_hop_neighbors.delete(@node)
-		neighbors = h_hop_neighbors
-		}
-		return h_hop_neighbors
-	end
-
-	def local_minimum(k)
-		# returns the node in the h-hop neighborhood whose hash forms a local minimum with the key to be stored
-		min_node = @node
-		min_dist = distance(k)
-		neighbors = neighborhood()
-		neighbors.each{|node|
-			# XXX TODO node.getRouting.distance is just distance() in THIS class!
-			dist = node.getRouting().distance(k)
-			if dist < min_dist
-				min_dist = dist
-				min_node = node
-			end
-		}
-		return min_node
-	end
-
-	def random_walk(probe)
-		neighbors = @node.getNeighbors()
-		probe.walk()
-		probe.add_to_path(@nid)
-		if probe.getLength() > 0
-			if neighbors.length > 0
-				randomNode = neighbors[rand(neighbors.length)]
-				return randomNode.getRouting().random_walk(probe)
-			else
-				probe.setLength(0)
-				return @node, probe
-			end
-		else
-			return @node, probe
-		end
-	end
-
-	def deterministic_walk(probe)
-		probe.add_to_path(@nid)
-		min_node = local_minimum(probe.getKey())
-		if min_node.nid == @node.nid
-			return @node
-		else
-			return min_node.getRouting().deterministic_walk(probe)
-		end
-	end
-
 
 	def managedGet(k, max=100)
 		# repeats the get request until it succeeds (or gets to 'max') and keeps
@@ -232,6 +168,89 @@ module LMS
 		stats["max_tries"] = max
 		return item_found, recall, stats
 	end
+
+	def computeHash(nid)
+		d = Digest::SHA1.hexdigest(nid.to_s).hex
+		return d.modulo(2**@@lambda)
+	end
+
+	def keyDistance(hash2)
+		# computes distance between the current node, and the given key 
+		w1 = (@hashID - hash2).modulo(2**@@lambda)
+		w2 = (hash2 - @hashID).modulo(2**@@lambda)
+		if w1 < w2
+			return w1
+		else
+			return w2
+		end
+	end
+
+	def neighborhood
+		nbrs = getPhysicalNbrs()
+		return nbrs if @@hops == 1 
+
+		# keep track of which neighbours we've already calculated so we don't
+		# duplicate efforts. 
+		alreadyCalculated = []
+		@@hops.times{
+			moreNbrs = nbrs
+			nbrs.each{|nbr|
+				unless alreadyCalculated.include? nbr   
+					moreNbrs += getPhysicalNbrs(nbr)
+					alreadyCalculated.push(nbr) 
+				end
+			} 
+			nbrs += moreNbrs
+		}
+		nbrs.delete(@nid)	
+		return nbrs.uniq
+	end
+
+	def local_minimum(k)
+		# returns the node in the h-hop neighborhood whose hash forms a local
+		# minimum with the key to be stored
+		min_node = @node
+		min_dist = keyDistance(k)
+		neighbors = neighborhood()
+		neighbors.each{|node|
+			dist = node.keyDistance(k)
+			if dist < min_dist
+				min_dist = dist
+				min_node = node
+			end
+		}
+		return min_node
+	end
+
+	def random_walk(probe)
+		neighbors = getNeighbors()
+		probe.walk()
+		probe.add_to_path(@nid)
+		if probe.getLength() > 0
+			if neighbors.length > 0
+				randomNode = neighbors[rand(neighbors.length)]
+				return randomNode.random_walk(probe)
+			else
+				probe.setLength(0)
+				return self, probe
+			end
+		else
+			return self, probe
+		end
+	end
+
+	def deterministic_walk(probe)
+		probe.add_to_path(@nid)
+		# local minima for this item's key
+		min_node = local_minimum(probe.getKey())
+		if min_node.nid == @nid
+			return self
+		else
+			return min_node.deterministic_walk(probe)
+		end
+	end
+
+
 end
 
 class Probe
